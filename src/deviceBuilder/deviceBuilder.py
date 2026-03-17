@@ -2,14 +2,13 @@ import os
 
 import numpy as np
 from ase import Atoms
-from ase.visualize import view
 from matplotlib import pyplot as plt
 from scipy import sparse as sp
 from scipy.linalg import eigh
 
 import deviceBuilder.utils as utils
 
-factor = 27.2114
+factor = 27.2114079527
 
 
 class Device:
@@ -42,6 +41,10 @@ class Device:
     def visualize_lattice(self):
         """
         Visualize the lattice using ASE's view function.
+
+        Parameters:
+        ngl : bool
+            If True, use the ngl library for visualization.
         """
 
         # CALL ASE VIEW
@@ -50,7 +53,65 @@ class Device:
         cell = self.lattice["L"]
 
         atoms = Atoms(symbols=symbols, positions=positions, cell=cell, pbc=[1, 1, 1])
-        view(atoms)
+
+        from weas_widget import WeasWidget
+
+        viewer = WeasWidget()
+        viewer.from_ase(atoms)
+        viewer
+
+        return viewer
+
+    def shift_energies(self, dE: float):
+        """
+        Shift the energies of the Hamiltonian by a specified amount.
+
+        Parameters:
+        -----------
+        dE : float
+            Amount by which to shift the energies (in eV).
+        """
+
+        for key in self.H.keys():
+            if key in self.S.keys():
+                self.H[key] = self.H[key] + self.S[key] * dE
+            else:
+                self.H[key] = self.H[key] + sp.eye(self.H[key].shape[0]) * dE
+
+        self.Fermi += dE
+
+    def reduce_to_gamma(self, dir: int = 0):
+        """
+        Reduce the Hamiltonian and Overlap matrices to only the Gamma-point components.
+        This method removes all non-Gamma components from the Hamiltonian and Overlap matrices,
+        effectively folding the band structure into the Gamma point.
+        """
+
+        key_list = list(self.H.keys())
+        for key in key_list:
+            key_dir = key[dir]
+            key_t = list(key)
+            del key_t[dir]
+            if key_t != [0, 0]:
+                key_target = [0, 0]
+                key_target.insert(dir, key_dir)
+                self.H[tuple(key_target)] += self.H[key]
+                del self.H[key]
+
+        key_list = list(self.S.keys())
+        for key in key_list:
+            key_dir = key[dir]
+            key_t = list(key)
+            del key_t[dir]
+            if key_t != [0, 0]:
+                key_target = [0, 0]
+                key_target.insert(dir, key_dir)
+                self.S[tuple(key_target)] += self.S[key]
+                del self.S[key]
+
+        self.coup_available = [0, 0, 0]
+        self.coup_available[dir] = 1
+        self.bs_available = True
 
     def compute_band_structure(self, k_path: list, n_point: int = 10, dE: float = 2.0):
         """
@@ -133,11 +194,121 @@ class Device:
 
         return eig_tot
 
+    def load_from_wannier90(
+        self,
+        filename: str,
+        path: str = "./",
+        eps: float = 1e-5,
+        gather_wannier_centers: bool = False,
+    ):
+        """
+        Load Hamiltonian and Overlap matrices from Wannier90 output files.
+
+        Parameters:
+        -----------
+        filename : str
+            Path to the Wannier90 output file.
+        path : str
+            Directory where the Wannier90 output files are located.
+        eps : float
+            Small value to threshold the matrix elements.
+        """
+
+        self.lattice = {}
+        self.orb_map = {}
+        w_centers, self.lattice["L"], self.lattice["coords"], self.lattice["at"] = (
+            utils.read_wannier_wout(
+                path + "/" + filename, return_atom=True, transform_home_cell=True
+            )
+        )
+
+        if gather_wannier_centers:
+
+            elements = np.unique(self.lattice["at"])
+
+            for at in elements:
+                self.orb_map[at] = 0
+
+            grid = np.array(
+                np.meshgrid([-1, 0, 1], [-1, 0, 1], [-1, 0, 1], indexing="ij")
+            )
+            combos = grid.reshape(3, -1).T
+            translations = combos @ self.lattice["L"]
+
+            translated_atoms = (
+                self.lattice["coords"][:, :, None] + translations.T[None, :, :]
+            )
+
+            w_atoms = np.zeros(len(w_centers), dtype=int)
+            for i, w in enumerate(w_centers):
+                dist = np.min(
+                    np.linalg.norm(w[None, :, None] - translated_atoms, axis=1), axis=1
+                )
+                index = np.argmin(dist)
+                w_atoms[i] = index
+
+            sorted_index = np.argsort(w_atoms)
+            _, orb_counts = np.unique(w_atoms, return_counts=True)
+
+            for i, count in enumerate(orb_counts):
+                at_i = self.lattice["at"][i]
+                if self.orb_map[at_i] == 0:
+                    self.orb_map[at_i] = count
+                else:
+                    if self.orb_map[at_i] != count:
+                        raise Exception(
+                            "Error in gathering the Wannier centers: different number of orbitals found for atom ",
+                            at_i,
+                        )
+
+        else:
+            self.orb_map["X"] = 1
+
+            self.lattice["coords"] = w_centers
+            self.lattice["at"] = np.array(["X"] * len(w_centers))
+
+        h_wann = utils.read_hr_dat(path + "/" + filename.replace(".wout", "_hr.dat"))
+
+        print(h_wann.shape)
+
+        n_coup_1 = h_wann.shape[0]
+        n_coup_2 = h_wann.shape[1]
+        n_coup_3 = h_wann.shape[2]
+
+        for i in range(-(n_coup_1 // 2), (n_coup_1 // 2) + 1):
+            for j in range(-(n_coup_2 // 2), (n_coup_2 // 2) + 1):
+                for k in range(-(n_coup_3 // 2), (n_coup_3 // 2) + 1):
+                    temp = h_wann[i, j, k, :, :]
+                    if gather_wannier_centers:
+                        temp = temp[sorted_index, :][:, sorted_index]
+                    temp = sp.csr_matrix(temp)
+                    temp.data[np.absolute(temp.data) <= eps] = 0
+                    temp.eliminate_zeros()
+                    if temp.size != 0:
+                        self.H[(i, j, k)] = temp
+                        print(
+                            "Hamiltonian Is not empty, I'm saving it. Size for",
+                            (i, j, k),
+                            " is: ",
+                            self.H[(i, j, k)].size,
+                        )
+
+        self.S[(0, 0, 0)] = sp.eye(self.H[(0, 0, 0)].shape[0], format="csr")
+
+        self.start_orb_per_at = np.cumsum(
+            [0] + [self.orb_map[at] for at in self.lattice["at"]]
+        )
+
+        self.Fermi = -999
+
+        # All couplings are available
+        self.coup_available = [1, 1, 1]
+        self.bs_available = True
+
     def load_from_cp2k_K_POINTS(
         self,
         filename: str,
         path: str = "./",
-        symmetrize: bool = True,
         eps: float = 1e-5,
     ):
         """
@@ -154,7 +325,7 @@ class Device:
         """
 
         # Read the CP2K settings from the output file
-        cp2k_settings = utils.read_cp2k_file(path + filename)
+        cp2k_settings = utils.read_cp2k_file(path + "/" + filename)
 
         # Extract the orb map
         self.orb_map = cp2k_settings["no_orb"]
@@ -162,8 +333,11 @@ class Device:
         # Extract the lattice infos. L is a 3x3 numpy matrix with the lattice vectors as rows, at is a numpy array with the atom types, coords is a Nx3 numpy array with the atomic coordinates
         self.lattice = {}
         self.lattice["L"], self.lattice["at"], self.lattice["coords"] = utils.read_xyz(
-            path + cp2k_settings["coordFile"]
+            path + "/" + cp2k_settings["coordFile"]
         )
+
+        # TODO CHECK IF IT IS WRAPPED
+        self.lattice["coords"] += self.lattice["L"] @ np.array([0.5, 0.5, 0.5])
 
         self.Fermi = cp2k_settings["fermi"]
 
@@ -176,6 +350,7 @@ class Device:
         for i in range(cp2k_settings["n_KS"]):
             file_path = (
                 path
+                + "/"
                 + cp2k_settings["project_name"]
                 + "-KS_SPIN_1_R_"
                 + str(i + 1)
@@ -186,26 +361,28 @@ class Device:
             print("Reading Hamiltonian ", key)
             if temp.size != 0:
                 temp = utils.bin_to_sparse(temp) * factor
+                print(temp.shape)
                 if key == (0, 0, 0):
                     size_mat = temp.shape[0]
                 temp = temp.tocoo()
                 temp._shape = (size_mat, size_mat)  # Ensure the shape is set correctly
                 temp = temp.tocsr()
-                if symmetrize:
-                    temp = utils.symmetrize_block(temp)
                 temp.data[np.absolute(temp.data) <= eps] = 0
-                self.H[key] = temp
-                print(
-                    "Hamiltonian Is not empty, I'm saving it. Size for",
-                    key,
-                    " is: ",
-                    self.H[key].size,
-                )
+                temp.eliminate_zeros()
+                if temp.nnz > 0:
+                    print(
+                        "Hamiltonian Is not empty, I'm saving it. Size for",
+                        key,
+                        " is: ",
+                        temp.size,
+                    )
+                    self.H[key] = temp
 
         # Load the Overlap for all the k-points
         for i in range(cp2k_settings["n_S"]):
             file_path = (
                 path
+                + "/"
                 + cp2k_settings["project_name"]
                 + "-S_SPIN_1_R_"
                 + str(i + 1)
@@ -219,16 +396,16 @@ class Device:
                 temp = temp.tocoo()
                 temp._shape = (size_mat, size_mat)  # Ensure the shape is set correctly
                 temp = temp.tocsr()
-                if symmetrize:
-                    temp = utils.symmetrize_block(temp)
                 temp.data[np.absolute(temp.data) <= eps * 0.1] = 0
-                self.S[key] = temp
-                print(
-                    "Overlap Is not empty, I'm saving it. Size for",
-                    key,
-                    " is: ",
-                    self.S[key].size,
-                )
+                temp.eliminate_zeros()
+                if temp.nnz > 0:
+                    print(
+                        "Overlap Is not empty, I'm saving it. Size for",
+                        key,
+                        " is: ",
+                        temp.size,
+                    )
+                    self.S[key] = temp
 
         # All couplings are available
         self.coup_available = [1, 1, 1]
@@ -242,6 +419,72 @@ class Device:
         center = (np.min(coords_rel, axis=0) + np.max(coords_rel, axis=0)) / 2
         self.lattice["coords"] -= center @ self.lattice["L"]
         self.lattice["coords"] += np.array([0.5, 0.5, 0.5]) @ self.lattice["L"]
+
+    def align_with_axis(self):
+        """
+        Align the atomic coordinates with the lattice vectors.
+        """
+        coords_rel = self.lattice["coords"] @ np.linalg.inv(self.lattice["L"])
+
+        min_rel = np.min(coords_rel, axis=0)
+
+        self.lattice["coords"] -= min_rel @ self.lattice["L"]
+        self.lattice["coords"] = np.absolute(self.lattice["coords"])
+
+    def translate_cell(self, shift: np.ndarray):
+        """
+        Translate the atomic coordinates by a specified shift.
+
+        Parameters:
+        -----------
+        shift : np.ndarray
+            1D array of length 3 specifying the translation vector in Cartesian coordinates.
+        """
+        if shift.shape != (3,):
+            raise ValueError("shift must be a 1D array of length 3")
+
+        self.lattice["coords"] += shift
+
+    def sort_atoms(self, dir: list = [0, 1, 2], decimals: int = 6):
+        """
+        Sort the atoms and orbitals along a specified direction.
+        It will internally use lexsort to sort along multiple directions.
+
+        Parameters:
+        -----------
+        dir : list
+            List of directions along which to sort the atoms (0 for x, 1 for y, 2 for z).
+        decimals : int
+            Number of decimals to round the fractional coordinates for sorting.
+        """
+        if not all(d in [0, 1, 2] for d in dir):
+            raise ValueError("dir must be a list of 0, 1, or 2")
+
+        # Compute the fractional coordinates of the atoms
+        frac_coord = self.lattice["coords"] @ np.linalg.inv(self.lattice["L"])
+
+        # Sort the atoms along the specified direction
+        sorted_at = np.lexsort((frac_coord[:, np.array(dir[::-1]).T]).T)
+
+        # Get the sorted orbitals and the indices to go back to the original order
+        sorted_orb = utils.get_orb_from_at(sorted_at, self.start_orb_per_at)[None, :]
+
+        # Reorder the lattice
+        self.lattice["coords"] = self.lattice["coords"][sorted_at, :]
+        self.lattice["at"] = self.lattice["at"][sorted_at]
+
+        # Reorder the Hamiltonian and Overlap matrices
+        for key in list(self.H.keys()):
+            self.H[key] = self.H[key][sorted_orb.T, sorted_orb]
+            self.H[key].sort_indices()
+        for key in list(self.S.keys()):
+            self.S[key] = self.S[key][sorted_orb.T, sorted_orb]
+            self.S[key].sort_indices()
+
+        # Update the starting orbital index for each atom
+        self.start_orb_per_at = np.cumsum(
+            [0] + [self.orb_map[at] for at in self.lattice["at"]]
+        )
 
     def _extract_coup_from_gamma(self, M: dict, dir: int):
         """
@@ -274,12 +517,26 @@ class Device:
                     "The hamiltonian has already not Gamma couplings in the selected direction"
                 )
 
-            # TODO check if the periodic coupling can be obtained
-
             # Extract the three matrices (cut over the shifted diagonal)
             bnd = int(np.round(np.shape(M_S)[0] / 2)) + 1
+
             M_3 = utils.get_upper_block(M_S, bnd)
+
+            # Check that there is a clear separation between the in-cell and coupling blocks
+            check = sp.tril(M_3, bnd + 20).nnz
+            if check != 0:
+                print(
+                    "WARNING! There is not a clear separation between the in-cell and coupling blocks. Try increasing the size of the unit cell in the direction ",
+                    dir,
+                )
+
             M_5 = utils.get_lower_block(M_S, -bnd)
+            check = sp.triu(M_5, -bnd - 20).nnz
+            if check != 0:
+                print(
+                    "WARNING! There is not a clear separation between the in-cell and coupling blocks. Try increasing the size of the unit cell in the direction ",
+                    dir,
+                )
 
             M_4 = M_S - M_3
             M_4 = M_4 - M_5
@@ -330,14 +587,14 @@ class Device:
                 "The other device doesn't have the coupling in this direction"
             )
 
-        if (
-            np.abs(
-                np.min(self.lattice["coords"][:, dir])
-                - np.min(dev_2.lattice["coords"][:, dir])
-            )
-            > 5 * tol
-        ):
-            raise Exception("The two devices are not aligned in the selected direction")
+        # if (
+        #    np.abs(
+        #        np.min(self.lattice["coords"][:, dir])
+        #        - np.min(dev_2.lattice["coords"][:, dir])
+        #    )
+        #    > 5 * tol
+        # ):
+        #    raise Exception("The two devices are not aligned in the selected direction")
 
         # TODO CHECK THAT THERE IS ONLY ONE COUPLING IN THE DIRECTION dir
 
@@ -362,6 +619,8 @@ class Device:
             [dev_2.orb_map[k] for k in dev_2.lattice["at"]],
         )
         at_opposite = np.unique(at_map[orb_opposite])
+
+        print("Atom in the opposite interface: ", at_opposite)
 
         AT_2 = []
         AT_1 = []
@@ -422,22 +681,40 @@ class Device:
         # Iterate over the hamiltonian and overlap matrices of dev_2 and glue them to self
         for key in dev_2.H.keys():
             if key[dir] == 0:
-                coup_key = list(key)
-                coup_key[dir] = -interface
-                coup_key = tuple(coup_key)
-                print(
-                    "Gluing hamiltonian with key ", key, " and coupling key ", coup_key
-                )
+                coup_key_up = list(key)
+                coup_key_up[dir] = -interface
+                coup_key_up = tuple(coup_key_up)
+
+                coup_key_down = list(key)
+                coup_key_down[dir] = interface
+                coup_key_down = tuple(coup_key_down)
+
+                print("Gluing hamiltonian with key ", key)
                 self.H[key] = self._glue_matrices(
-                    self.H[key], dev_2.H[key], dev_2.H[coup_key], orb_1, orb_2
+                    self.H[key],
+                    dev_2.H[key],
+                    dev_2.H[coup_key_up],
+                    dev_2.H[coup_key_down],
+                    orb_1,
+                    orb_2,
                 )
         for key in dev_2.S.keys():
             if key[dir] == 0:
-                coup_key = list(key)
-                coup_key[dir] = -interface
-                coup_key = tuple(coup_key)
+                coup_key_up = list(key)
+                coup_key_up[dir] = -interface
+                coup_key_up = tuple(coup_key_up)
+
+                coup_key_down = list(key)
+                coup_key_down[dir] = interface
+                coup_key_down = tuple(coup_key_down)
+
                 self.S[key] = self._glue_matrices(
-                    self.S[key], dev_2.S[key], dev_2.S[coup_key], orb_1, orb_2
+                    self.S[key],
+                    dev_2.S[key],
+                    dev_2.S[coup_key_up],
+                    dev_2.S[coup_key_down],
+                    orb_1,
+                    orb_2,
                 )
 
         # Glue the lattice
@@ -465,16 +742,29 @@ class Device:
             )
         self.lattice["L"][dir, :] += dev_2.lattice["L"][dir, :]
 
+        self.orb_map.update(dev_2.orb_map)
+
         # Update orb_per_at
         self.start_orb_per_at = np.cumsum(
             [0] + [self.orb_map[at] for at in self.lattice["at"]]
         )
 
+        key_list = list(self.H.keys())
+        for key in key_list:
+            if key[dir] == -1 or key[dir] == 1:
+                del self.H[key]
+
+        key_list = list(self.S.keys())
+        for key in key_list:
+            if key[dir] == -1 or key[dir] == 1:
+                del self.S[key]
+
     def _glue_matrices(
         self,
         M1: sp.csr_matrix,
         M2: sp.csr_matrix,
-        coup: sp.csr_matrix,
+        coup_up: sp.csr_matrix,
+        coup_down: sp.csr_matrix,
         orb_1: np.ndarray,
         orb_2: np.ndarray,
     ):
@@ -500,7 +790,8 @@ class Device:
         """
         # Cut the coupling matrix to keep only the relevant orbitals
         orb_all_2 = np.arange(M2.shape[0])[None, :]
-        coup_cut = coup[orb_all_2.T, orb_2]
+        coup_cut_up = coup_up[orb_all_2.T, orb_2]
+        coup_cut_low = coup_down[orb_2.T, orb_all_2]
 
         N_2 = M2.shape[0]
 
@@ -509,8 +800,8 @@ class Device:
 
         # Insert the coupling matrices
         orb_1 = orb_1 + N_2
-        M_tot[orb_all_2.T, orb_1] = coup_cut
-        M_tot[orb_1.T, orb_all_2] = coup_cut.T
+        M_tot[orb_all_2.T, orb_1] = coup_cut_up
+        M_tot[orb_1.T, orb_all_2] = coup_cut_low
 
         return M_tot
 
@@ -773,6 +1064,11 @@ class Device:
                 at_inside_rep = self._get_atoms_inside_cell(
                     orig, vec, repet[0], repet[1], repet[2]
                 )
+                # Check that the number of atoms is the same as in the origin cell
+                if at_inside_rep.size != at_inside_cont.size:
+                    raise Exception(
+                        "The number of atoms in the periodic repetition is different from the origin cell"
+                    )
                 at_inside_rep = self._reorder_atoms(
                     at_inside_cont, at_inside_rep, vec, repet
                 )
@@ -785,17 +1081,28 @@ class Device:
                 # Sum over all the matrices coupling the origin cell to the first periodic repetition
                 M_coup_K += M_coup
 
+                repet[dir] = -1
+                at_inside_rep_m1 = self._get_atoms_inside_cell(
+                    orig, vec, repet[0], repet[1], repet[2]
+                )
+                if at_inside_rep_m1.size > 0:
+                    raise Exception(
+                        "There are atoms in the negative periodic repetition"
+                    )
+
+                repet[dir] = 2
+                at_inside_rep_2 = self._get_atoms_inside_cell(
+                    orig, vec, repet[0], repet[1], repet[2]
+                )
+                orb_inside_rep_2 = utils.get_orb_from_at(
+                    at_inside_rep_2, self.start_orb_per_at
+                )[None, :]
                 # Check that there are no couplings outside the unit cell and the first periodic repetition
                 # Get all the orbitals not in the origin cell and the first periodic repetition
-                orb_extra = np.setdiff1d(
-                    np.arange(M[key].shape[0]),
-                    np.concatenate((orb_inside_cont, orb_inside_rep)),
-                )[None, :]
-
-                M_extra = M[key][orb_inside_cont.T, orb_extra]
-                if M_extra.nnz != 0:
+                M_extra_2 = M[key][orb_inside_cont.T, orb_inside_rep_2]
+                if M_extra_2.nnz != 0:
                     raise Exception(
-                        "The contact hamiltonian has couplings outside the unit cell and the first periodic repetition"
+                        "The contact hamiltonian has couplings in the second periodic repetition"
                     )
 
                 orb_last_added = orb_inside_cont.copy()
@@ -857,7 +1164,7 @@ class Device:
                 (self.lattice["at"], self.lattice["at"][at_inside_cont]), axis=0
             )
 
-            self.lattice["L"][dir, :] += vec[dir, :]
+            self.lattice["L"][dir, :] += np.absolute(vec[dir, :])
 
         # Compute and plot the band structure at transverse Gamma
         if compute_band:
@@ -922,6 +1229,7 @@ class Device:
 
         # Iterate over all the perpendicular couplings
         for p_c in perp_couplings:
+
             M_list = []
 
             # Get the indices along the direction to upscale
@@ -948,7 +1256,10 @@ class Device:
                 key = list(p_c).copy()
                 key.insert(dir, i)
                 key = tuple(key)
-                M_list.append(M[key])
+                if key not in M:
+                    M_list.append(sp.csr_matrix((size_mat, size_mat)))
+                else:
+                    M_list.append(M[key])
 
             # End by padding with empty matrices
             for i in range(n_pad_plus + n - 1):
@@ -1038,14 +1349,15 @@ class Device:
 
         # Get the atoms and orbitals to keep
         tot_at = np.arange(self.lattice["coords"].shape[0])
-        tot_orb = np.arange(self.H[0].shape[0])
+        tot_orb = np.arange(self.H[(0, 0, 0)].shape[0])
         keep_at = np.setdiff1d(tot_at, rem_at)
         keep_orb = np.setdiff1d(tot_orb, rem_orb)[None, :]
 
         # Keep only the orbitals in the hamiltonian
-        for i in range(len(self.H)):
-            self.H[i] = self.H[i][keep_orb.T, keep_orb]
-            self.S[i] = self.S[i][keep_orb.T, keep_orb]
+        for keys in self.H.keys():
+            self.H[keys] = self.H[keys][keep_orb.T, keep_orb]
+        for keys in self.S.keys():
+            self.S[keys] = self.S[keys][keep_orb.T, keep_orb]
         # Keep only the atoms in the lattice
         self.lattice["coords"] = self.lattice["coords"][keep_at, :]
         self.lattice["at"] = self.lattice["at"][keep_at]
@@ -1054,7 +1366,7 @@ class Device:
             [0] + [self.orb_map[at] for at in self.lattice["at"]]
         )
 
-    def generate_potential_barrier(self, V1, V2, V3, slope, dir):
+    def generate_potential_barrier(self, V1, V2, V3, slope, dir, grid_from_OMEN=None):
         """
         Generate a smooth potential barrier along a specified direction using error functions.
 
@@ -1072,6 +1384,12 @@ class Device:
             Direction along which to generate the potential (0 for x, 1 for y, 2 for z).
         """
 
+        coords = self.lattice["coords"].copy()
+
+        if grid_from_OMEN is not None:
+            print("Using the grid from OMEN")
+            coords = grid_from_OMEN.copy()
+
         from scipy.special import erf
 
         if dir not in [0, 1, 2]:
@@ -1083,15 +1401,11 @@ class Device:
         l2 = l1 + l_s
 
         # Generate the potential
-        self.potential = np.ones(self.lattice["coords"].shape[0]) * V1
-        self.potential += (V2 - V1) * (
-            0.5 * erf((self.lattice["coords"][:, dir] - l1) / slope) + 0.5
-        )
-        self.potential += (V3 - V2) * (
-            0.5 * erf((self.lattice["coords"][:, dir] - l2) / slope) + 0.5
-        )
+        self.potential = np.ones(coords.shape[0]) * V1
+        self.potential += (V2 - V1) * (0.5 * erf((coords[:, dir] - l1) / slope) + 0.5)
+        self.potential += (V3 - V2) * (0.5 * erf((coords[:, dir] - l2) / slope) + 0.5)
 
-    def export_data(self, transport_dir=[0], output_dir="device/inputs"):
+    def export_data_QUATREX(self, transport_dir=[0], output_dir="device/inputs"):
         """
         Export the device data to a specified directory in the QUATREX format.
 
@@ -1115,6 +1429,8 @@ class Device:
                     check = False
                     break
             if check:
+                if value.has_canonical_format == False:
+                    raise Exception("Matrix is not in canonical format")
                 sp.save_npz(
                     os.path.join(
                         output_dir, f"hamiltonian_{key[0]}_{key[1]}_{key[2]}.npz"
@@ -1130,6 +1446,8 @@ class Device:
                     check = False
                     break
             if check:
+                if value.has_canonical_format == False:
+                    raise Exception("Matrix is not in canonical format")
                 sp.save_npz(
                     os.path.join(output_dir, f"overlap_{key[0]}_{key[1]}_{key[2]}.npz"),
                     value.tocsr(),
@@ -1147,3 +1465,49 @@ class Device:
             f.write(f'Lattice="{lattice_vals}"\n')
             for at_type, (x, y, z) in zip(self.lattice["at"], self.lattice["coords"]):
                 f.write(f"{at_type} {x:.6f} {y:.6f} {z:.6f}\n")
+
+    def export_data_OMEN(self, output_dir="device_OMEN"):
+        """
+        Export the device data to a specified directory in the OMEN format.
+
+        Parameters:
+        -----------
+        output_dir : str
+            Directory where the device data will be saved.
+        """
+
+        print("In OMEN transport direction is always x (0)")
+        # Create the output directory if it doesn't exist
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Save Hamiltonian and Overlap matrices
+        utils.print_bin(output_dir + "/H_4.bin", self.H[(0, 0, 0)].tocoo())
+        if (self.S[(0, 0, 0)] != sp.eye(self.S[(0, 0, 0)].shape[0]).tocsr()).nnz != 0:
+            utils.print_bin(output_dir + "/S_4.bin", self.S[(0, 0, 0)].tocoo())
+
+        if (0, 1, 0) in self.H.keys():
+            utils.print_bin(output_dir + "/H_5.bin", self.H[(0, 1, 0)].tocoo())
+            utils.print_bin(output_dir + "/H_3.bin", self.H[(0, -1, 0)].tocoo())
+            if (0, 1, 0) in self.S.keys():
+                utils.print_bin(output_dir + "/S_5.bin", self.S[(0, 1, 0)].tocoo())
+            if (0, -1, 0) in self.S.keys():
+                utils.print_bin(output_dir + "/S_3.bin", self.S[(0, -1, 0)].tocoo())
+
+        # Create potential.npy if potential is defined
+        if self.potential is not None:
+            with open(os.path.join(output_dir, "vact_dat"), "w") as f:
+                for val in self.potential:
+                    f.write(f"{val:.6f}  ")
+
+        # Crate lattice.xyz
+        xyz_path = os.path.join(output_dir, "lattice_dat")
+        swapped_ind = np.array([0, 2, 1])  # OMEN uses x,z,y
+        with open(xyz_path, "w") as f:
+            f.write(
+                f"{len(self.lattice['at'])} 2 0 0 0\n\n"
+            )  # first line: number of atoms
+            f.write("  ".join(map(str, self.lattice["L"][0, swapped_ind])) + "\n")
+            f.write("  ".join(map(str, self.lattice["L"][2, swapped_ind])) + "\n")
+            f.write("  ".join(map(str, self.lattice["L"][1, swapped_ind])) + "\n\n")
+            for at_type, (x, y, z) in zip(self.lattice["at"], self.lattice["coords"]):
+                f.write(f"{at_type}\t{x:.6f}\t{z:.6f}\t{y:.6f}\n")
