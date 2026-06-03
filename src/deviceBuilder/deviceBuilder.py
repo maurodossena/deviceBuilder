@@ -5,6 +5,7 @@ from ase import Atoms
 from matplotlib import pyplot as plt
 from scipy import sparse as sp
 from scipy.linalg import eigh
+import scipy
 
 import deviceBuilder.utils as utils
 
@@ -667,6 +668,19 @@ class Device:
 
         AT_1 = np.array(AT_1, dtype=int)
         AT_2 = np.array(AT_2, dtype=int)
+
+        #Check that AT_1 is unique
+        if len(AT_1) != len(np.unique(AT_1)):
+            raise ValueError(
+                f"Error in gluing the two devices: "
+                f"Multiple atoms in the first device match atoms in the second device."
+            )
+        #Check that AT_2 is unique
+        if len(AT_2) != len(np.unique(AT_2)):
+            raise ValueError(
+                f"Error in gluing the two devices: "
+                f"Multiple atoms in the second device match atoms in the first device."
+            )
 
         # Get the orbitals corresponding to these atoms
         orb_1 = utils.get_orb_from_at(AT_1, self.start_orb_per_at)[None, :]
@@ -1420,6 +1434,9 @@ class Device:
         # Create the output directory if it doesn't exist
         os.makedirs(output_dir, exist_ok=True)
 
+        H_to_save = {}
+        S_to_save = {}
+
         # Save Hamiltonian and Overlap matrices
         for key, value in self.H.items():
             # Don't save the coupling matrices in the transport directions
@@ -1431,12 +1448,9 @@ class Device:
             if check:
                 if value.has_canonical_format == False:
                     raise Exception("Matrix is not in canonical format")
-                sp.save_npz(
-                    os.path.join(
-                        output_dir, f"hamiltonian_{key[0]}_{key[1]}_{key[2]}.npz"
-                    ),
-                    value.tocsr(),
-                )
+                if not isinstance(value, sp.csr_matrix):
+                    raise Exception("Matrix is not in csr format")
+                H_to_save[str(list(key))] = value
 
         for key, value in self.S.items():
             # Don't save the coupling matrices in the transport directions
@@ -1448,17 +1462,19 @@ class Device:
             if check:
                 if value.has_canonical_format == False:
                     raise Exception("Matrix is not in canonical format")
-                sp.save_npz(
-                    os.path.join(output_dir, f"overlap_{key[0]}_{key[1]}_{key[2]}.npz"),
-                    value.tocsr(),
-                )
+                if not isinstance(value, sp.csr_matrix):
+                    raise Exception("Matrix is not in csr format")
+                S_to_save[str(list(key))] = value
+            
+        scipy.io.savemat(os.path.join(output_dir, "hamiltonian.mat"), H_to_save, do_compression=True)
+        scipy.io.savemat(os.path.join(output_dir, "overlap.mat"), S_to_save, do_compression=True)
 
         # Create potential.npy if potential is defined
         if self.potential is not None:
             np.save(os.path.join(output_dir, "potential.npy"), self.potential)
 
         # Crate lattice.xyz
-        xyz_path = os.path.join(output_dir, "lattice.xyz")
+        xyz_path = os.path.join(output_dir, "structure.xyz")
         with open(xyz_path, "w") as f:
             f.write(f"{len(self.lattice['at'])}\n")  # first line: number of atoms
             lattice_vals = " ".join(f"{val:.6f}" for val in self.lattice["L"].flatten())
