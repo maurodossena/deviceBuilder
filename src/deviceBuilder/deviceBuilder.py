@@ -1450,7 +1450,7 @@ class Device:
                     raise Exception("Matrix is not in canonical format")
                 if not isinstance(value, sp.csr_matrix):
                     raise Exception("Matrix is not in csr format")
-                H_to_save[str(list(key))] = value
+                H_to_save[str(list(key))] = sp.triu(value)
 
         for key, value in self.S.items():
             # Don't save the coupling matrices in the transport directions
@@ -1464,7 +1464,7 @@ class Device:
                     raise Exception("Matrix is not in canonical format")
                 if not isinstance(value, sp.csr_matrix):
                     raise Exception("Matrix is not in csr format")
-                S_to_save[str(list(key))] = value
+                S_to_save[str(list(key))] = sp.triu(value)
             
         scipy.io.savemat(os.path.join(output_dir, "hamiltonian.mat"), H_to_save, do_compression=True)
         scipy.io.savemat(os.path.join(output_dir, "overlap.mat"), S_to_save, do_compression=True)
