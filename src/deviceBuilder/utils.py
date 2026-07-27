@@ -441,7 +441,7 @@ def read_bin(fname, struct_fmt="<IIIdI"):
     """
     Parameters
     ----------
-    fname : File to be read as '*.xyz'
+    fname : File to be read as '*.csr'
     struct_fmt : Structure of the binary file. The default is "<IIIdI".
 
     Returns

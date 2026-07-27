@@ -11,7 +11,6 @@ import deviceBuilder.utils as utils
 
 factor = 27.2114079527
 
-
 class Device:
 
     def __init__(self):
@@ -38,6 +37,46 @@ class Device:
             0,
         ]  # List to check if the coupling in x,y,z is available (not folded into 000 Hamiltonian or not available at all)
         self.bs_available = False  # Boolean to check if the band structure can be computed (i.e. if the couplings in all directions are available)
+
+    def print_isosurface_self_interaction(self, atom_type: str):
+        """
+        Print the isosurface self-interaction for a given atom type.
+
+        Parameters:
+        -----------
+        atom_type : str
+            The atom type for which to print the isosurface self-interaction.
+        """
+        
+        if self.H == {}:
+            raise Exception("The Hamiltonian is empty, load a device first")
+        
+        at_indices = np.where(self.lattice["at"] == atom_type)[0]
+        V_self_inter = np.zeros(len(at_indices))
+
+        H_diag = self.H[(0, 0, 0)].diagonal()
+
+        for n, i in enumerate(at_indices):
+            orb_start = self.start_orb_per_at[i]
+            orb_end = self.start_orb_per_at[i + 1]
+            V_self_inter[n] = np.mean(H_diag[orb_start:orb_end])
+
+        # 2D map of the self-interaction potential over the atomic positions
+        x = self.lattice["coords"][at_indices, 0]
+        y = self.lattice["coords"][at_indices, 1]
+
+        plt.figure()
+        tpc = plt.tripcolor(x, y, V_self_inter, cmap="viridis", shading="gouraud")
+        plt.colorbar(tpc, label="V (eV)")
+        plt.xlabel("x (Å)")
+        plt.ylabel("y (Å)")
+        plt.title(f"Self-interaction potential for {atom_type}")
+        plt.gca().set_aspect("equal")
+        plt.show()
+        np.save("self_interaction_" + atom_type + ".npy", V_self_inter)
+        np.save("x_" + atom_type + ".npy", x)
+        np.save("y_" + atom_type + ".npy", y)
+
 
     def visualize_lattice(self):
         """
@@ -130,6 +169,10 @@ class Device:
         --------
         eig_tot : list
             List of eigenvalues computed at each k-point.
+        cond_min : float
+            Minimum conduction band energy.
+        val_max : float
+            Maximum valence band energy.
         """
 
         if not self.bs_available:
@@ -177,23 +220,59 @@ class Device:
                 phase = np.exp(1j * np.pi * np.dot(k, np.asarray(key)))
                 S_k += self.S[key] * phase
 
-            H_k = H_k.todense()
             S_k = S_k.todense()
 
-            # Compute the eigenvalues around the Fermi level
-            eigvals, _ = eigh(
-                H_k, b=S_k, subset_by_value=(self.Fermi - dE, self.Fermi + dE)
-            )
+            try:
+                import cupy as cp
+                cupy_available = True
+            except:
+                cupy_available = False
+
+            if cupy_available:
+                # Use CuPy for GPU acceleration
+                S_chol_k = cp.linalg.cholesky(cp.asarray(S_k))
+                del S_k  # Free GPU memory
+                S_inv_k = cp.linalg.inv(S_chol_k)
+                H_k = H_k.todense()
+                H_ortho_k = S_inv_k @ cp.asarray(H_k) @ S_inv_k.T.conj()
+                del S_chol_k, S_inv_k # Free GPU memory
+                eigvals = cp.linalg.eigvalsh(H_ortho_k)
+
+                eigvals = eigvals.get()  # Transfer back to CPU
+            
+            else:
+                S_chol_k = np.linalg.cholesky(S_k)
+                S_inv_k = np.linalg.inv(S_chol_k)
+                H_ortho_k = S_inv_k @ H_k @ S_inv_k.T.conj()
+
+                # Compute the eigenvalues around the Fermi level
+                eigvals = np.linalg.eigvalsh(H_ortho_k)
+
             # Plot the eigenvalues at that k-point
             plt.scatter([i] * len(eigvals), eigvals, color="black", s=1)
 
             # Append the eigenvalues to the total list
             eig_tot.append(eigvals)
 
+
         plt.ylim(self.Fermi - dE, self.Fermi + dE)
         plt.show()
 
-        return eig_tot
+        eig_tot = np.column_stack(eig_tot)
+
+        eig_temp = eig_tot.copy()
+        eig_temp[eig_temp < self.Fermi] = 1e10
+        
+        cond_min = np.min(eig_temp)
+        print("Conduction band minimum: ", np.min(eig_temp))
+
+        eig_temp = eig_tot.copy()
+        eig_temp[eig_temp > self.Fermi] = -1e10
+
+        val_max = np.max(eig_temp)
+        print("Valence band maximum: ", np.max(eig_temp))
+
+        return eig_tot, cond_min, val_max
 
     def load_from_wannier90(
         self,
@@ -462,7 +541,8 @@ class Device:
             raise ValueError("dir must be a list of 0, 1, or 2")
 
         # Compute the fractional coordinates of the atoms
-        frac_coord = self.lattice["coords"] @ np.linalg.inv(self.lattice["L"])
+        
+        frac_coord = np.round(self.lattice["coords"], decimals) @ np.linalg.inv(self.lattice["L"])
 
         # Sort the atoms along the specified direction
         sorted_at = np.lexsort((frac_coord[:, np.array(dir[::-1]).T]).T)
@@ -818,6 +898,123 @@ class Device:
         M_tot[orb_1.T, orb_all_2] = coup_cut_low
 
         return M_tot
+
+    def load_from_MALOQ_GAMMA(
+        self,
+        H_file = None,
+        S_file = None,
+        xyz_file = None,
+        orb_map = None,
+        extract_x: bool = True,
+        extract_y: bool = False,
+        extract_z: bool = False,
+        symmetrize: bool = True,
+        eps: float = 1e-5,
+        wrap: bool = True
+    ):
+        """
+        Load Hamiltonian and Overlap matrices from CP2K output files at the Gamma point,
+        and extract coupling matrices in specified directions.
+
+        Parameters:
+        -----------
+        H_file : str
+            Path to the Hamiltonian matrix file.
+        S_file : str
+            Path to the Overlap matrix file.
+        xyz_file : str
+            Path to the XYZ file containing atomic coordinates.
+        extract_x : bool
+            Whether to extract coupling matrices in the x direction.
+        extract_y : bool
+            Whether to extract coupling matrices in the y direction.
+        extract_z : bool
+            Whether to extract coupling matrices in the z direction.
+        symmetrize : bool
+            Whether to symmetrize the Hamiltonian and Overlap matrices.
+        eps : float
+            Threshold below which matrix elements are set to zero.
+        """
+
+        # Extract only x coupling
+        if extract_x:
+            self.coup_available[0] = 1
+            self.bs_available = True
+        if extract_y:
+            self.coup_available[1] = 1
+            self.bs_available = True
+        if extract_z:
+            self.coup_available[2] = 1
+            self.bs_available = True
+
+        # Extract the orb map
+        if orb_map is None:
+            raise ValueError("orb_map must be provided")
+        self.orb_map = orb_map
+
+        # Extract the lattice infos. L is a 3x3 numpy matrix with the lattice vectors as rows, at is a numpy array with the atom types, coords is a Nx3 numpy array with the atomic coordinates
+        self.lattice = {}
+        self.lattice["L"], self.lattice["at"], self.lattice["coords"] = utils.read_xyz(
+            xyz_file
+        )
+
+        if wrap:
+            #Wrap the coordinates in the unit cell
+            self.lattice["coords"] = (self.lattice["coords"] @ np.linalg.inv(self.lattice["L"]) % 1.0) @ self.lattice["L"]
+
+        # Extract the Fermi level
+        self.Fermi = -999
+        # Extract the starting orbital index for each atom
+        self.start_orb_per_at = np.cumsum(
+            [0] + [self.orb_map[at] for at in self.lattice["at"]]
+        )
+
+        # Read the KS file (GAMMA)
+        if H_file.endswith(".npy"):
+            KS = np.load(H_file)
+            KS = sp.csr_matrix(KS) * factor
+        elif H_file.endswith(".npz"):
+            KS = sp.load_npz(H_file) * factor
+        else:
+            raise ValueError("H_file must be a .npy or .npz file")
+        
+        if S_file is None:
+            S = sp.eye(KS.shape[0], format="csr")
+        else:
+            # Read the S file (GAMMA)
+            if S_file.endswith(".npy"):
+                S = np.load(S_file)
+                S = sp.csr_matrix(S)
+            elif S_file.endswith(".npz"):
+                S = sp.load_npz(S_file)
+            else:
+                raise ValueError("S_file must be a .npy or .npz file")
+
+        # Symmetrize the matrices
+        if symmetrize:
+            KS = utils.symmetrize_block(KS)
+            S = utils.symmetrize_block(S)
+
+        # Remove elements below the threshold
+        KS.data[np.absolute(KS.data) <= eps] = 0
+        KS.eliminate_zeros()
+        S.data[np.absolute(S.data) <= eps * 0.1] = 0
+        S.eliminate_zeros()
+
+        # Save the Gamma matrices
+        self.H[(0, 0, 0)] = KS.tocsr()
+        self.S[(0, 0, 0)] = S.tocsr()
+
+        # Extract the coupling matrices in the specified directions
+        if extract_x:
+            self._extract_coup_from_gamma(self.H, 0)
+            self._extract_coup_from_gamma(self.S, 0)
+        if extract_y:
+            self._extract_coup_from_gamma(self.H, 1)
+            self._extract_coup_from_gamma(self.S, 1)
+        if extract_z:
+            self._extract_coup_from_gamma(self.H, 2)
+            self._extract_coup_from_gamma(self.S, 2)
 
     def load_from_cp2k_GAMMA(
         self,
@@ -1419,7 +1616,7 @@ class Device:
         self.potential += (V2 - V1) * (0.5 * erf((coords[:, dir] - l1) / slope) + 0.5)
         self.potential += (V3 - V2) * (0.5 * erf((coords[:, dir] - l2) / slope) + 0.5)
 
-    def export_data_QUATREX(self, transport_dir=[0], output_dir="device/inputs"):
+    def export_data_QUATREX(self, transport_dir=[0], output_dir="device", cont = "lr", export_bonds = False):
         """
         Export the device data to a specified directory in the QUATREX format.
 
@@ -1429,10 +1626,17 @@ class Device:
             List of directions along which transport occurs (0 for x, 1 for y, 2 for z).
         output_dir : str
             Directory where the device data will be saved.
+        cont : str
+            Contacts to be exported. Can be "l", "r", "t", "b", or any combination of these letters.
+        export_bonds : bool
+            Whether to export bond data.
         """
 
+        import toml
+        from qttools.utils.hdf5_utils import save_hdf5_dict
+
         # Create the output directory if it doesn't exist
-        os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(output_dir+ "/inputs", exist_ok=True)
 
         H_to_save = {}
         S_to_save = {}
@@ -1465,22 +1669,154 @@ class Device:
                 if not isinstance(value, sp.csr_matrix):
                     raise Exception("Matrix is not in csr format")
                 S_to_save[str(list(key))] = sp.triu(value)
-            
-        scipy.io.savemat(os.path.join(output_dir, "hamiltonian.mat"), H_to_save, do_compression=True)
-        scipy.io.savemat(os.path.join(output_dir, "overlap.mat"), S_to_save, do_compression=True)
-
+        
+        save_hdf5_dict(os.path.join(output_dir+ "/inputs", "hamiltonian.h5"), H_to_save)
+        save_hdf5_dict(os.path.join(output_dir+ "/inputs", "overlap.h5"), S_to_save)
+        
         # Create potential.npy if potential is defined
         if self.potential is not None:
-            np.save(os.path.join(output_dir, "potential.npy"), self.potential)
+            np.save(os.path.join(output_dir+ "/inputs", "potential.npy"), self.potential)
 
         # Crate lattice.xyz
-        xyz_path = os.path.join(output_dir, "structure.xyz")
+        xyz_path = os.path.join(output_dir+ "/inputs", "structure.xyz")
         with open(xyz_path, "w") as f:
             f.write(f"{len(self.lattice['at'])}\n")  # first line: number of atoms
             lattice_vals = " ".join(f"{val:.6f}" for val in self.lattice["L"].flatten())
             f.write(f'Lattice="{lattice_vals}"\n')
             for at_type, (x, y, z) in zip(self.lattice["at"], self.lattice["coords"]):
                 f.write(f"{at_type} {x:.6f} {y:.6f} {z:.6f}\n")
+
+        #Create config.toml
+
+        config = {}
+        config["simulation_dir"] = "."
+        config["formalism"] = "wf"
+
+        config["qtbm"] = {}
+        config["qtbm"]["max_batch_size"] = 1
+        config["qtbm"]["low_rank_obc"] = False
+
+        config["device"] = {}
+        config["device"]["transport_direction"] = ["x", "y", "z"][transport_dir[0]]
+        config["device"]["num_orbitals_per_atom"] = self.orb_map
+        config["device"]["kpoint_grid"] = [1, 1, 1]
+        config["device"]["kpoint_shift"] = [0, 0, 0]
+
+        config["device"]["contacts"] = {}
+
+        lattice_round = np.round(self.lattice["L"], decimals=3)
+        coord_round = np.round(self.lattice["coords"], decimals=3)
+
+        cont_list = []
+        if "l" in cont:
+
+            at_inside_cont_ind = np.argmin(self.lattice["coords"][:, 0])
+            coord_min = self.lattice["coords"][at_inside_cont_ind, :]
+            delta = self.lattice["coords"] - coord_min
+            delta = delta @ np.linalg.inv(self.lattice["L"])
+            delta = delta[abs(delta[:, 1]) < 1e-3, :]
+            delta = delta[abs(delta[:, 2]) < 1e-3, :]
+            delta = delta[abs(delta[:, 0]) > 1e-5, :]
+
+            latt_vec_l = np.round(delta[np.argmin(abs(delta[:, 0])), :] @ self.lattice["L"], decimals=3)
+
+            cont_l = {}
+            cont_l["name"] = "left"
+            cont_l["origin"] = [float(np.min(coord_round[:, i])-0.01) for i in range(3)]
+            cont_l["lattice_vectors"] = [latt_vec_l.tolist(),lattice_round[1,:].tolist(),list(lattice_round[2,:].tolist())] 
+            cont_l["fermi_level"] = self.Fermi
+            cont_l["direction"] = "a"
+            cont_l["temperature"] = 300
+            cont_list.append(cont_l)
+
+        if "r" in cont:
+
+            at_inside_cont_ind = np.argmax(self.lattice["coords"][:, 0])
+            coord_max = self.lattice["coords"][at_inside_cont_ind, :]
+            delta = self.lattice["coords"] - coord_max
+            delta = delta @ np.linalg.inv(self.lattice["L"])
+            delta = delta[abs(delta[:, 1]) < 1e-3, :]
+            delta = delta[abs(delta[:, 2]) < 1e-3, :]
+            delta = delta[abs(delta[:, 0]) > 1e-5, :]
+
+            latt_vec_r = np.round(delta[np.argmin(abs(delta[:, 0])), :] @ self.lattice["L"], decimals=3)
+
+            cont_r = {}
+            cont_r["name"] = "right"
+            cont_r["origin"] = [float(np.max(coord_round[:, 0])+0.01), float(np.min(coord_round[:, 1])-0.01), float(np.min(coord_round[:, 2])-0.01)]
+            cont_r["lattice_vectors"] = [latt_vec_r.tolist(),lattice_round[1,:].tolist(),list(lattice_round[2,:].tolist())] 
+            cont_r["fermi_level"] = self.Fermi
+            cont_r["direction"] = "a"
+            cont_r["temperature"] = 300
+            cont_list.append(cont_r)
+        
+        if "t" in cont:
+
+            at_inside_cont_ind = np.argmax(self.lattice["coords"][:, 1])
+            coord_max = self.lattice["coords"][at_inside_cont_ind, :]
+            delta = self.lattice["coords"] - coord_max
+            delta = delta @ np.linalg.inv(self.lattice["L"])
+            delta = delta[abs(delta[:, 0]) < 1e-3, :]
+            delta = delta[abs(delta[:, 2]) < 1e-3, :]
+            delta = delta[abs(delta[:, 1]) > 1e-5, :]
+
+            latt_vec_t = np.round(delta[np.argmin(abs(delta[:, 0])), :] @ self.lattice["L"], decimals=3)
+
+            cont_t = {}
+            cont_t["name"] = "top"
+            cont_t["origin"] = [float(np.min(coord_round[:, 0])-0.01), float(np.max(coord_round[:, 1])+0.01), float(np.min(coord_round[:, 2])-0.01)]
+            cont_t["lattice_vectors"] = [list(lattice_round[0,:]), latt_vec_t.tolist(), list(lattice_round[2,:].tolist())]
+            cont_t["fermi_level"] = self.Fermi
+            cont_t["direction"] = "b"
+            cont_t["temperature"] = 300
+            cont_list.append(cont_t)
+        
+        if "b" in cont:
+
+            at_inside_cont_ind = np.argmin(self.lattice["coords"][:, 1])
+            coord_min = self.lattice["coords"][at_inside_cont_ind, :]
+            delta = self.lattice["coords"] - coord_min
+            delta = delta @ np.linalg.inv(self.lattice["L"])
+            delta = delta[abs(delta[:, 0]) < 1e-3, :]
+            delta = delta[abs(delta[:, 2]) < 1e-3, :]
+            delta = delta[abs(delta[:, 1]) > 1e-5, :]
+
+            latt_vec_b = np.round(delta[np.argmin(abs(delta[:, 0])), :] @ self.lattice["L"], decimals=3)
+
+            cont_b = {}
+            cont_b["name"] = "bottom"
+            cont_b["origin"] = [float(np.min(coord_round[:, 0])-0.01), float(np.min(coord_round[:, 1])-0.01), float(np.max(coord_round[:, 2])+0.01)]
+            cont_b["lattice_vectors"] = [list(lattice_round[0,:]), latt_vec_b.tolist(), list(lattice_round[2,:].tolist())]
+            cont_b["fermi_level"] = self.Fermi
+            cont_b["direction"] = "b"
+            cont_b["temperature"] = 300
+            cont_list.append(cont_b)
+        
+        config["device"]["contacts"] = cont_list
+
+        config["electron"] = {}
+        config["electron"]["solver"] = {"direct_solver": "thomas"}
+        config["electron"]["energy_window_min"] = self.Fermi - 1
+        config["electron"]["energy_window_max"] = self.Fermi + 1
+        config["electron"]["energy_window_num"] = 201
+
+        config["electron"]["obc"] = {}
+        config["electron"]["obc"]["algorithm"] = "spectral"
+        config["electron"]["obc"]["num_ref_iterations"] = 4
+        config["electron"]["obc"]["nevp_solver"] = "full"
+        config["electron"]["obc"]["r_o"] = 1000
+        config["electron"]["obc"]["r_i"] = 0.9
+        config["electron"]["obc"]["m_0"] = 100
+        config["electron"]["obc"]["num_quad_points"] = 64
+        config["electron"]["obc"]["min_decay"] = 1e-8
+        config["electron"]["obc"]["max_decay"] = 2
+
+        config["compute"] = {"nevp": {"eig_compute_location": "cupy"}}
+
+        with open(os.path.join(output_dir, "config.toml"), "w") as f:
+            f.write("# This file was generated by deviceBuilder. https://github.com/maurodossena/deviceBuilder.git\n")
+            toml.dump(config, f)
+
 
     def export_data_OMEN(self, output_dir="device_OMEN"):
         """
