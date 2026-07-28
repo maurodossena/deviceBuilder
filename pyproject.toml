@@ -17,3 +17,12 @@ dependencies = [
   "matplotlib>=3.7",
 ]
 
+[project.optional-dependencies]
+test = ["pytest>=7", "toml", "h5py"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
