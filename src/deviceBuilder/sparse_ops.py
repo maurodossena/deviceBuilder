@@ -4,22 +4,6 @@ from scipy import sparse
 import numpy as np
 
 
-def symmetrize_block(block: sparse.csr_matrix) -> sparse.csr_matrix:
-    """
-    Symmetrize a sparse matrix.
-    Parameters
-    ----------
-    block : sparse.csr_matrix
-        Matrix to be symmetrized.
-    Returns
-    -------
-    sparse.csr_matrix
-        Symmetrized matrix.
-    """
-    upper = sparse.triu(block, 1)
-    return block + upper.T
-
-
 def get_upper_block(block: sparse.csr_matrix, cutoff_diag: int) -> sparse.csr_matrix:
     """
     Get the upper block of a sparse matrix.
@@ -66,12 +50,14 @@ def prune_small(block: sparse.csr_matrix, eps: float) -> sparse.csr_matrix:
         Matrix to be pruned.
     eps : float
         Threshold below which matrix elements are set to zero.
+    
     Returns
     -------
     sparse.csr_matrix
-        The same matrix, with the small elements removed from its sparsity
-        pattern.
+        Pruned matrix.
     """
+
     block.data[np.absolute(block.data) <= eps] = 0
     block.eliminate_zeros()
+
     return block

@@ -4,7 +4,7 @@ from deviceBuilder import Device
 # "graph.out" is the CP2K output file, "SCF" the directory containing it (and the
 # .csr matrices / coordinate file it refers to).
 dev1 = Device()
-dev1.load_from_cp2k_GAMMA("diam.out", "SCF",extract_x=True, extract_y=True, extract_z=True)
+dev1.load_from_cp2k("diam.out", "SCF")
 
 # Repeat the unit cell 6 times along x, folding the periodic couplings into the
 # enlarged cell.

@@ -17,7 +17,6 @@ class ExportMixin(DeviceBase):
         transport_dir=[0],
         output_dir="device",
         cont="lr",
-        export_bonds=False,
     ):
         """
         Export the device data to a specified directory in the QUATREX format.
@@ -30,11 +29,7 @@ class ExportMixin(DeviceBase):
             Directory where the device data will be saved.
         cont : str
             Contacts to be exported. Can be "l", "r", "t", "b", or any combination of these letters.
-        export_bonds : bool
-            Whether to export bond data.
         """
-
-        # TODO: `export_bonds` is accepted but never used.
 
         import toml
         from qttools.utils.hdf5_utils import save_hdf5_dict

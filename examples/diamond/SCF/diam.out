@@ -18,11 +18,11 @@
  DBCSR| Split modifier for TAS multiplication algorithm                  1.0E+00 (U)
 
 
-  **** **** ******  **  PROGRAM STARTED AT               2026-07-29 11:07:38.970
- ***** ** ***  *** **   PROGRAM STARTED ON                   tortin15.ee.ethz.ch
+  **** **** ******  **  PROGRAM STARTED AT               2026-07-30 16:49:21.088
+ ***** ** ***  *** **   PROGRAM STARTED ON                   tortin16.ee.ethz.ch
  **    ****   ******    PROGRAM STARTED BY                              mdossena
- ***** **    ** ** **   PROGRAM PROCESS ID                                536279
-  **** **  *******  **  PROGRAM STARTED IN /usr/scratch/attelas1/mdossena/Diamon
+ ***** **    ** ** **   PROGRAM PROCESS ID                                543921
+  **** **  *******  **  PROGRAM STARTED IN /usr/scratch/attelas1/mdossena/diamon
                                            d/SCF
 
  CP2K| version string:                                       CP2K version 2025.1
@@ -63,13 +63,13 @@
 
  MEMORY| system memory details [Kb]
  MEMORY|                        rank 0           min           max       average
- MEMORY| MemTotal            527935720     527935720     527935720     527935720
- MEMORY| MemFree             517862480     517862480     517862480     517862480
- MEMORY| Buffers                  1100          1100          1100          1100
- MEMORY| Cached                 643464        643464        643464        643464
- MEMORY| Slab                  1516264       1516264       1516264       1516264
- MEMORY| SReclaimable           661908        661908        661908        661908
- MEMORY| MemLikelyFree       519168952     519168952     519168952     519168952
+ MEMORY| MemTotal            527935876     527935876     527935876     527935876
+ MEMORY| MemFree             506672940     506672940     506672940     506672940
+ MEMORY| Buffers                  1088          1088          1088          1088
+ MEMORY| Cached                4118512       4118512       4118512       4118512
+ MEMORY| Slab                  6190248       6190248       6190248       6190248
+ MEMORY| SReclaimable          4948188       4948188       4948188       4948188
+ MEMORY| MemLikelyFree       515740728     515740728     515740728     515740728
 
 
  *** Fundamental physical constants (SI units) ***
@@ -1027,23 +1027,23 @@
 
   Step     Update method      Time    Convergence         Total energy    Change
   ------------------------------------------------------------------------------
-     1 NoMix/Diag. 0.10E+00    2.0     1.26282911     -2843.8020409811 -2.84E+03
+     1 NoMix/Diag. 0.10E+00    2.1     1.26282911     -2843.8020409811 -2.84E+03
      2 Broy./Diag. 0.10E+00    3.1     0.00051581     -2934.5774519117 -9.08E+01
      3 Broy./Diag. 0.10E+00    3.2     0.00427094     -2905.5293912473  2.90E+01
-     4 Broy./Diag. 0.10E+00    3.2     0.00003320     -2905.1254428986  4.04E-01
+     4 Broy./Diag. 0.10E+00    3.3     0.00003320     -2905.1254428986  4.04E-01
      5 Broy./Diag. 0.10E+00    3.2     0.00000129     -2905.1344491128 -9.01E-03
      6 Broy./Diag. 0.10E+00    3.2     0.00000692     -2905.2107952258 -7.63E-02
      7 Broy./Diag. 0.10E+00    3.3     0.00000059     -2905.2113446665 -5.49E-04
      8 Broy./Diag. 0.10E+00    3.3     0.00000196     -2905.2112732395  7.14E-05
-     9 Broy./Diag. 0.10E+00    3.3     0.00000016     -2905.2112412803  3.20E-05
-    10 Broy./Diag. 0.10E+00    3.3     0.00000016     -2905.2111554375  8.58E-05
+     9 Broy./Diag. 0.10E+00    3.4     0.00000016     -2905.2112412803  3.20E-05
+    10 Broy./Diag. 0.10E+00    3.4     0.00000016     -2905.2111554375  8.58E-05
     11 Broy./Diag. 0.10E+00    3.4     0.00000001     -2905.2111308953  2.45E-05
-    12 Broy./Diag. 0.10E+00    3.3     0.00000006     -2905.2111081853  2.27E-05
-    13 Broy./Diag. 0.10E+00    3.3     6.5485E-09     -2905.2111060470  2.14E-06
-    14 Broy./Diag. 0.10E+00    3.3     4.0256E-09     -2905.2111048174  1.23E-06
-    15 Broy./Diag. 0.10E+00    3.3     6.0727E-10     -2905.2111046222  1.95E-07
-    16 Broy./Diag. 0.10E+00    3.3     7.3221E-10     -2905.2111043348  2.87E-07
-    17 Broy./Diag. 0.10E+00    3.3     5.5462E-11     -2905.2111043085  2.64E-08
+    12 Broy./Diag. 0.10E+00    3.4     0.00000006     -2905.2111081853  2.27E-05
+    13 Broy./Diag. 0.10E+00    3.4     6.5485E-09     -2905.2111060470  2.14E-06
+    14 Broy./Diag. 0.10E+00    3.4     4.0256E-09     -2905.2111048174  1.23E-06
+    15 Broy./Diag. 0.10E+00    3.4     6.0728E-10     -2905.2111046222  1.95E-07
+    16 Broy./Diag. 0.10E+00    3.4     7.3221E-10     -2905.2111043348  2.87E-07
+    17 Broy./Diag. 0.10E+00    3.4     5.5462E-11     -2905.2111043085  2.64E-08
 
   *** SCF run converged in    17 steps ***
 
@@ -1057,7 +1057,7 @@
   Self energy of the core charge distribution:              -6827.52405850378818
   Core Hamiltonian energy:                                   2216.82726869376984
   Hartree energy:                                            2620.99267956765652
-  Exchange-correlation energy:                               -915.50700011970730
+  Exchange-correlation energy:                               -915.50700011970719
   Electronic entropic energy:                                  -0.00000000000001
   Fermi energy:                                                 0.64551079106850
 
@@ -2124,7 +2124,7 @@
  marketing flops                   146.028888E+09
  -------------------------------------------------------------------------------
  # multiplications                             17
- max memory usage/rank             839.147520E+06
+ max memory usage/rank             835.870720E+06
  # max total images/rank                        1
  # max 3D layers                                1
  # MPI messages exchanged                   15232
@@ -2176,7 +2176,7 @@
  0     integrate general  CPU                                  32768       0.06%
  -------------------------------------------------------------------------------
 
- MEMORY| Estimated peak process memory [MiB]                                 802
+ MEMORY| Estimated peak process memory [MiB]                                 799
 
  -------------------------------------------------------------------------------
  ----                             MULTIGRID INFO                            ----
@@ -2198,7 +2198,7 @@
  MP_Bcast               74                2848755.
  MP_Allreduce          725                   2722.
  MP_Sync                21
- MP_Alltoall           396               16092888.
+ MP_Alltoall           396               22392992.
  MP_SendRecv          2268                 109440.
  MP_ISendRecv         2142                 109440.
  MP_Wait              4040
@@ -2302,61 +2302,61 @@
  -------------------------------------------------------------------------------
  SUBROUTINE                       CALLS  ASD         SELF TIME        TOTAL TIME
                                 MAXIMUM       AVERAGE  MAXIMUM  AVERAGE  MAXIMUM
- CP2K                                 1  1.0    0.089    0.090   59.322   59.323
- qs_energies                          1  2.0    0.012    0.012   58.866   58.866
- scf_env_do_scf                       1  3.0    0.001    0.002   55.489   55.654
- scf_env_do_scf_inner_loop           17  4.0    0.001    0.002   55.488   55.653
- qs_ks_update_qs_env                 17  5.0    0.000    0.000   27.407   27.408
- rebuild_ks_matrix                   17  6.0    0.000    0.000   27.400   27.401
- qs_ks_build_kohn_sham_matrix        17  7.0    0.011    0.015   27.400   27.401
- qs_rho_update_rho_low               18  5.0    0.000    0.000   19.062   19.063
- calculate_rho_elec                  18  6.0    0.037    0.043   19.062   19.063
- grid_collocate_task_list            18  7.0   14.402   14.691   14.402   14.691
- sum_up_and_integrate                17  8.0    0.000    0.001   13.745   13.746
- integrate_v_rspace                  17  9.0    0.001    0.001   13.703   13.709
- fft_wrap_pw1pw2                    311 10.0    0.009    0.010   13.082   13.440
- fft_wrap_pw1pw2_700                206 11.3    0.700    0.746   12.678   12.962
- qs_vxc_create                       17  8.0    0.002    0.002   11.227   11.295
- xc_vxc_pw_create                    17  9.0    0.115    0.156   11.225   11.293
- grid_integrate_task_list            17 10.0    9.947   10.110    9.947   10.110
- fft3d_ps                           311 12.0    5.278    5.696    9.603   10.022
- xc_pw_derive                       102 11.0    0.001    0.002    7.581    7.799
- qs_scf_new_mos                      17  5.0    0.003    0.004    6.209    6.220
- xc_rho_set_and_dset_create          17 10.0    0.182    0.225    5.881    6.174
- eigensolver                         17  6.0    0.002    0.003    5.793    5.830
- xc_pw_divergence                    17 10.0    0.001    0.001    5.074    5.262
- cp_fm_syevd                         17  7.0    0.000    0.000    5.056    5.061
- cp_fm_redistribute_end              17  8.0    2.528    5.043    2.529    5.043
- cp_fm_syevd_base                    17  8.0    2.508    5.021    2.508    5.021
- density_rs2pw                       18  7.0    0.001    0.003    4.533    4.847
- mp_alltoall_z22v                   311 14.0    3.184    3.857    3.184    3.857
- gspace_mixing                       16  5.0    0.034    0.039    3.843    3.844
- potential_pw2rs                     17 10.0    0.003    0.003    3.521    3.527
- broyden_mixing                      16  6.0    2.821    2.851    2.857    2.869
- mp_waitany                        1606 11.3    2.337    2.833    2.337    2.833
- transfer_rs2pw                      74  8.0    0.002    0.002    2.169    2.508
- x_to_yz                            153 13.1    0.617    0.817    2.300    2.486
- yz_to_x                            123 13.1    0.497    0.524    1.995    2.484
- transfer_pw2rs                      69 10.9    0.001    0.001    2.303    2.309
- xc_functional_eval                  17 11.0    0.000    0.000    1.732    1.987
- pbe_lda_eval                        17 12.0    1.731    1.987    1.731    1.987
- transfer_rs2pw_700                  20  8.8    0.407    0.492    1.501    1.832
- transfer_pw2rs_700                  18 11.8    0.542    0.585    1.537    1.577
- scf_post_calculation_gpw             1  3.0    0.000    0.000    1.516    1.521
- write_available_results              1  4.0    0.000    0.000    1.512    1.517
- write_mo_free_results                1  5.0    0.009    0.011    1.511    1.515
- pw_derive                          153 11.3    1.327    1.414    1.327    1.414
- pw_scatter_p                       170 12.2    1.202    1.253    1.202    1.253
- init_scf_run                         1  3.0    0.001    0.001    1.219    1.220
- pw_poisson_solve                    17  8.0    0.000    0.001    1.195    1.212
+ CP2K                                 1  1.0    0.099    0.100   59.754   59.754
+ qs_energies                          1  2.0    0.013    0.014   59.272   59.273
+ scf_env_do_scf                       1  3.0    0.002    0.002   56.125   56.290
+ scf_env_do_scf_inner_loop           17  4.0    0.001    0.002   56.123   56.288
+ qs_ks_update_qs_env                 17  5.0    0.000    0.001   27.846   27.852
+ rebuild_ks_matrix                   17  6.0    0.000    0.000   27.839   27.844
+ qs_ks_build_kohn_sham_matrix        17  7.0    0.009    0.013   27.838   27.844
+ qs_rho_update_rho_low               18  5.0    0.000    0.000   19.154   19.155
+ calculate_rho_elec                  18  6.0    0.037    0.043   19.154   19.154
+ grid_collocate_task_list            18  7.0   14.474   14.683   14.474   14.683
+ sum_up_and_integrate                17  8.0    0.000    0.001   14.103   14.109
+ integrate_v_rspace                  17  9.0    0.001    0.001   14.059   14.067
+ fft_wrap_pw1pw2                    311 10.0    0.009    0.010   13.197   13.519
+ fft_wrap_pw1pw2_700                206 11.3    0.701    0.745   12.719   12.999
+ qs_vxc_create                       17  8.0    0.002    0.003   11.295   11.347
+ xc_vxc_pw_create                    17  9.0    0.114    0.158   11.293   11.345
+ grid_integrate_task_list            17 10.0   10.056   10.169   10.056   10.169
+ fft3d_ps                           311 12.0    5.274    5.692    9.715   10.040
+ xc_pw_derive                       102 11.0    0.001    0.002    7.600    7.804
+ qs_scf_new_mos                      17  5.0    0.007    0.007    6.285    6.299
+ xc_rho_set_and_dset_create          17 10.0    0.175    0.220    5.898    6.200
+ eigensolver                         17  6.0    0.002    0.003    5.884    5.921
+ xc_pw_divergence                    17 10.0    0.001    0.001    5.097    5.249
+ cp_fm_syevd                         17  7.0    0.000    0.000    5.084    5.089
+ cp_fm_redistribute_end              17  8.0    2.542    5.070    2.543    5.071
+ cp_fm_syevd_base                    17  8.0    2.522    5.048    2.522    5.048
+ density_rs2pw                       18  7.0    0.001    0.002    4.552    4.836
+ gspace_mixing                       16  5.0    0.034    0.039    3.871    3.872
+ mp_alltoall_z22v                   311 14.0    3.265    3.767    3.265    3.767
+ potential_pw2rs                     17 10.0    0.003    0.003    3.614    3.621
+ broyden_mixing                      16  6.0    2.826    2.863    2.868    2.883
+ mp_waitany                        1606 11.3    2.393    2.796    2.393    2.796
+ x_to_yz                            153 13.1    0.618    0.800    2.353    2.506
+ transfer_rs2pw                      74  8.0    0.002    0.002    2.145    2.451
+ yz_to_x                            123 13.1    0.497    0.534    2.017    2.438
+ transfer_pw2rs                      69 10.9    0.001    0.002    2.361    2.371
+ xc_functional_eval                  17 11.0    0.000    0.000    1.753    1.998
+ pbe_lda_eval                        17 12.0    1.753    1.998    1.753    1.998
+ transfer_rs2pw_700                  20  8.8    0.395    0.469    1.507    1.829
+ transfer_pw2rs_700                  18 11.8    0.528    0.588    1.547    1.589
+ pw_derive                          153 11.3    1.326    1.401    1.326    1.401
+ scf_post_calculation_gpw             1  3.0    0.000    0.000    1.278    1.283
+ write_available_results              1  4.0    0.000    0.000    1.275    1.280
+ write_mo_free_results                1  5.0    0.010    0.012    1.274    1.278
+ pw_scatter_p                       170 12.2    1.201    1.247    1.201    1.247
+ init_scf_run                         1  3.0    0.001    0.001    1.223    1.224
+ pw_poisson_solve                    17  8.0    0.001    0.001    1.196    1.213
  -------------------------------------------------------------------------------
 
  The number of warnings for this run is : 1
  
  -------------------------------------------------------------------------------
-  **** **** ******  **  PROGRAM ENDED AT                 2026-07-29 11:08:40.332
- ***** ** ***  *** **   PROGRAM RAN ON                       tortin15.ee.ethz.ch
+  **** **** ******  **  PROGRAM ENDED AT                 2026-07-30 16:50:22.869
+ ***** ** ***  *** **   PROGRAM RAN ON                       tortin16.ee.ethz.ch
  **    ****   ******    PROGRAM RAN BY                                  mdossena
- ***** **    ** ** **   PROGRAM PROCESS ID                                536279
-  **** **  *******  **  PROGRAM STOPPED IN /usr/scratch/attelas1/mdossena/Diamon
+ ***** **    ** ** **   PROGRAM PROCESS ID                                543921
+  **** **  *******  **  PROGRAM STOPPED IN /usr/scratch/attelas1/mdossena/diamon
                                            d/SCF

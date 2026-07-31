@@ -91,8 +91,6 @@ def read_wannier_wout(
 ):
     """Parses the contents of a `seedname.wout` file and returns the Wannier centers and lattice vectors.
 
-    TODO: Add tests.
-
     Parameters
     ----------
     path : Path

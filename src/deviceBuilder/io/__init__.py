@@ -9,17 +9,16 @@ One module per format:
 * `omen`      : the binary matrix format read by OMEN.
 """
 
-from .cp2k import bin_to_sparse, read_bin, read_cp2k_file
+from .cp2k import  read_cp2k_file, read_csr
 from .omen import print_bin
 from .wannier90 import read_hr_dat, read_wannier_wout
 from .xyz import read_xyz
 
 __all__ = [
-    "bin_to_sparse",
     "print_bin",
-    "read_bin",
     "read_cp2k_file",
     "read_hr_dat",
     "read_wannier_wout",
     "read_xyz",
+    "read_csr",
 ]

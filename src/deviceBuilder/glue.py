@@ -39,7 +39,20 @@ class GlueMixin(DeviceBase):
                 "The other device doesn't have the coupling in this direction"
             )
 
-        # TODO CHECK THAT THERE IS ONLY ONE COUPLING IN THE DIRECTION dir
+        max_coup = 0
+        for k in dev_2.H.keys():
+            max_coup = max(max_coup, abs(k[dir]))
+        for k in dev_2.S.keys():
+            max_coup = max(max_coup, abs(k[dir]))
+
+        if max_coup == 0:
+            raise Exception(
+                "The other device doesn't have the coupling in this direction"
+            )
+        if max_coup > 1:
+            raise Exception(
+                "The other device has more than one coupling in this direction"
+            )
 
         # Find the orbitals in dev_2 (at the opposite interface) that are periodically coupled
         # Check in all hamiltonians and overlaps

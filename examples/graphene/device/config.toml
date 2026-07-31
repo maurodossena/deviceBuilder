@@ -12,16 +12,16 @@ kpoint_grid = [ 1, 1, 1,]
 kpoint_shift = [ 0, 0, 0,]
 [[device.contacts]]
 name = "left"
-origin = [ 1.04, 1.04, 1.19,]
-lattice_vectors = [ [ 2.461, 0.0, 0.0,], [ 0.0, 4.263, 0.0,], [ 0.0, 0.0, 6.709,],]
+origin = [ 1.04, 1.04, 7.835,]
+lattice_vectors = [ [ 2.461, 0.0, 0.0,], [ 0.0, 4.263, 0.0,], [ 0.0, 0.0, 20.0,],]
 fermi_level = -2.26
 direction = "a"
 temperature = 300
 
 [[device.contacts]]
 name = "right"
-origin = [ 44.131, 1.04, 1.19,]
-lattice_vectors = [ [ -2.461, 0.0, 0.0,], [ 0.0, 4.263, 0.0,], [ 0.0, 0.0, 6.709,],]
+origin = [ 44.131, 1.04, 7.835,]
+lattice_vectors = [ [ -2.461, 0.0, 0.0,], [ 0.0, 4.263, 0.0,], [ 0.0, 0.0, 20.0,],]
 fermi_level = -2.26
 direction = "a"
 temperature = 300

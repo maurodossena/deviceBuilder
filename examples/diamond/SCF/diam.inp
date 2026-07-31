@@ -125,13 +125,13 @@
                &END XC
                &PRINT
                        &KS_CSR_WRITE
+                               UPPER_TRIANGULAR
                                BINARY
-                               REAL_SPACE
                                THRESHOLD 1e-3
                        &END
                        &S_CSR_WRITE
+                               UPPER_TRIANGULAR
                                BINARY
-                               REAL_SPACE
                                THRESHOLD 1e-3
                        &END
                &END
