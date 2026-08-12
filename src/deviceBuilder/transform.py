@@ -28,28 +28,6 @@ class TransformMixin(DeviceBase):
 
         self.Fermi += dE
 
-    def reduce_to_gamma(self, dir: int = 0):
-        """
-        Reduce the Hamiltonian and Overlap matrices to only the Gamma-point components.
-        This method removes all non-Gamma components from the Hamiltonian and Overlap matrices,
-        effectively folding the band structure into the Gamma point.
-        """
-
-        for M in (self.H, self.S):
-            for key in list(M.keys()):
-                key_dir = key[dir]
-                key_t = list(key)
-                del key_t[dir]
-                if key_t != [0, 0]:
-                    key_target = [0, 0]
-                    key_target.insert(dir, key_dir)
-                    M[tuple(key_target)] += M[key]
-                    del M[key]
-
-        self.coup_available = [0, 0, 0]
-        self.coup_available[dir] = 1
-        self.bs_available = True
-
     def center_cell(self):
         """
         Center the atomic coordinates in the unit cell.
@@ -83,6 +61,114 @@ class TransformMixin(DeviceBase):
             raise ValueError("shift must be a 1D array of length 3")
 
         self.lattice["coords"] += shift
+
+    def wrap_cell(self):
+        """
+        Wrap the atomic coordinates into the unit cell defined by the lattice vectors.
+        This method ensures that all atomic coordinates are within the bounds of the unit cell.
+        """
+
+        coords_rel = self.lattice["coords"] @ np.linalg.inv(self.lattice["L"])
+        translation = -np.floor(coords_rel)
+        
+        for i in range(3):
+            if not self.PBC[i]:
+                translation[:, i] = 0
+
+        self.lattice["coords"] += translation @ self.lattice["L"]
+
+        # If there is only one matrix in a direction, the coupling
+        # is assumed to be summed over all the periodic image,
+        # so the translation in that direction is not relevant for the 
+        # matricees.
+        for i in range(3):
+            if self.max_coupling[i] == 0:
+                translation[:,i] = 0
+
+        unique_translations, counts = np.unique(translation, axis=0, return_counts=True)
+        ref_translation = unique_translations[np.argmax(counts)]
+        translations_hamiltonian = translation - ref_translation
+
+        unique_translations_hamiltonian = unique_translations - ref_translation
+
+        for t in unique_translations_hamiltonian:
+
+            at_t = np.where(np.all(translations_hamiltonian == t, axis=1))[0]
+            orb_t = get_orb_from_at(at_t, self.start_orb_per_at)
+
+            self._wrap_matrix("H", t, orb_t)
+            self._wrap_matrix("S", t, orb_t)
+
+        self._update_max_coupling()
+
+        self._add_missing_couplings(self.H[(0,0,0)].shape[0], "H")
+        self._add_missing_couplings(self.S[(0,0,0)].shape[0], "S")
+
+        self._check_if_hermitian("H")
+        self._check_if_hermitian("S")
+
+    def _wrap_matrix(self, matrix_type, t, orb):
+
+        def swap_elements(A,B,C, elements):
+            A_c, B_c, C_c = A.tocoo(), B.tocoo(), C.tocoo()
+
+            mask = np.zeros(B_c.shape[0], dtype=bool)
+            mask[elements] = True
+            nmask = ~mask
+
+            B_keep = (mask[B_c.row] & mask[B_c.col]) | (nmask[B_c.row] & nmask[B_c.col])
+            A_keep = nmask[A_c.row] & mask[A_c.col]
+            C_keep = mask[C_c.row] & nmask[C_c.col]
+
+            row = np.concatenate([A_c.row[A_keep], B_c.row[B_keep], C_c.row[C_keep]])
+            col = np.concatenate([A_c.col[A_keep], B_c.col[B_keep], C_c.col[C_keep]])
+            data = np.concatenate([A_c.data[A_keep], B_c.data[B_keep], C_c.data[C_keep]])
+
+            shape = A_c.shape
+            return sp.csr_matrix((data, (row, col)), shape=shape)
+        
+        def shift_key(key, t):
+            return tuple((np.int32(np.array(key) + t)).tolist())
+        
+        if matrix_type == "H":
+            M = self.H
+        elif matrix_type == "S":
+            M = self.S
+        else:
+            raise ValueError("matrix_type must be 'H' or 'S'")
+
+        M_wrap={}
+
+        if np.array_equal(t, [0, 0, 0]):
+            return
+
+        # The elements coupling a translated atom to a non translated one end up in
+        # a different cell, so the destination keys have to be visited as well: an
+        # element landing on a key that is not stored (even only in an intermediate
+        # pass, before another translation brings it back in range) would be lost.
+        shape = M[(0, 0, 0)].shape
+        keys_H = set(M.keys())
+        keys_H |= {shift_key(key, t) for key in M.keys()}
+        keys_H |= {shift_key(key, -t) for key in M.keys()}
+
+        empty = sp.csr_matrix(shape)
+
+        for key in keys_H:
+            key_m1 = shift_key(key, t)
+            key_p1 = shift_key(key, -t)
+
+            H_m1 = M.get(key_m1, empty)
+            H_p1 = M.get(key_p1, empty)
+
+            M_wrap[key] = swap_elements(H_m1, M.get(key, empty), H_p1, orb)
+
+        # Drop the keys that stayed empty, so that the range of the couplings does
+        # not grow pass after pass.
+        if matrix_type == "H":
+            self.H = {k: mm for k, mm in M_wrap.items() if mm.nnz != 0 or k == (0, 0, 0)}
+        else:
+            self.S = {k: mm for k, mm in M_wrap.items() if mm.nnz != 0 or k == (0, 0, 0)}
+
 
     def sort_atoms(self, dir: list = [0, 1, 2], decimals: int = 6):
         """

@@ -7,7 +7,7 @@ produced:
     examples/<name>/
         build_<something>.py   the script that builds the device
         <inputs>/              whatever the script loads, e.g. a CP2K run
-        <deck>/config.toml     the deck the script exported
+        <deck>/quatrex_config.toml     the deck the script exported
 
 The test runs one example per case: it copies the directory to a temporary one,
 runs the script there, and compares the deck it writes to the committed one,
@@ -85,7 +85,7 @@ def find_decks(root: Path) -> list[Path]:
         The deck directories, sorted by path.
     """
 
-    return sorted(path.parent for path in root.rglob("config.toml"))
+    return sorted(path.parent for path in root.rglob("quatrex_config.toml"))
 
 
 @contextlib.contextmanager
@@ -242,7 +242,7 @@ def test_the_example_reproduces_its_deck(example: Example, tmp_path: Path):
 
     workdir = run_example(example, tmp_path)
     exported_deck = workdir / reference_deck.relative_to(example.root)
-    assert (exported_deck / "config.toml").is_file(), (
+    assert (exported_deck / "quatrex_config.toml").is_file(), (
         f"{example.script.name} did not write a deck to {exported_deck}"
     )
 

@@ -34,25 +34,27 @@ class GlueMixin(DeviceBase):
         if dir not in [0, 1, 2]:
             raise ValueError("dir must be 0, 1, or 2")
 
-        if dev_2.coup_available[dir] == 0:
+        if dev_2.max_coupling[dir] == 0:
             raise Exception(
                 "The other device doesn't have the coupling in this direction"
             )
 
-        max_coup = 0
-        for k in dev_2.H.keys():
-            max_coup = max(max_coup, abs(k[dir]))
-        for k in dev_2.S.keys():
-            max_coup = max(max_coup, abs(k[dir]))
-
-        if max_coup == 0:
-            raise Exception(
-                "The other device doesn't have the coupling in this direction"
-            )
-        if max_coup > 1:
+        if dev_2.max_coupling[dir] > 1:
             raise Exception(
                 "The other device has more than one coupling in this direction"
+            + " (max_coupling = " + str(dev_2.max_coupling[dir]) + ")")
+
+        if self.max_coupling[dir] > 1:
+            raise Exception(
+                "The current device has more than one coupling in this direction"
+                + " (max_coupling = " + str(self.max_coupling[dir]) + ")"
             )
+
+        for dir_check in [0, 1, 2]:
+            if dir_check != dir and dev_2.max_coupling[dir_check] != self.max_coupling[dir_check]:
+                raise Exception(
+                    "The two devices have different coupling ranges in direction " + str(dir_check)
+                )
 
         # Find the orbitals in dev_2 (at the opposite interface) that are periodically coupled
         # Check in all hamiltonians and overlaps
@@ -122,6 +124,10 @@ class GlueMixin(DeviceBase):
             for key in list(M.keys()):
                 if key[dir] == -1 or key[dir] == 1:
                     del M[key]
+
+        self._update_max_coupling()
+
+        self.PBC[dir] = False  # The device is no longer periodic in the direction of the contact
 
     def _glue_blocks(
         self,

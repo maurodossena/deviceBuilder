@@ -29,12 +29,9 @@ class DeviceBase:
 
         self.potential = None  # Potential profile over the device
 
-        self.coup_available = [
-            0,
-            0,
-            0,
-        ]  # List to check if the coupling in x,y,z is available (not folded into 000 Hamiltonian or not available at all)
-        self.bs_available = False  # Boolean to check if the band structure can be computed (i.e. if the couplings in all directions are available)
+        self.max_coupling = [0, 0, 0]  # List to store the maximum coupling in each direction
+
+        self.PBC = [False, False, False]  # List to store the periodic boundary conditions in each direction
 
     def _refresh_orb_per_at(self):
         """

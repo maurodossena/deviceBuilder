@@ -87,7 +87,7 @@ def read_hr_dat(
 
 
 def read_wannier_wout(
-    path: Path, transform_home_cell: bool = True, return_atom: bool = False
+    path: Path, return_atom: bool = False
 ):
     """Parses the contents of a `seedname.wout` file and returns the Wannier centers and lattice vectors.
 
@@ -95,8 +95,6 @@ def read_wannier_wout(
     ----------
     path : Path
         Path to a `seedname.wout` file.
-    transform_home_cell : bool, optional
-        Whether to transform the Wannier centers to the home cell. Defaults to `True`.
     return_atom : bool, optional
         Whether to return the atomic coordinates and elements. Defaults to `False`.
 
@@ -145,16 +143,6 @@ def read_wannier_wout(
             )
             break
 
-    if transform_home_cell:
-        # Get the transformation that diagonalize the lattice vectors
-        transformation = np.linalg.inv(lattice_vectors)
-        # Appy it to the wannier centers
-        wannier_centers = np.dot(wannier_centers, transformation)
-        # Translate the Wannier centers to the home cell
-        wannier_centers = np.mod(wannier_centers, 1)
-        # Transform the Wannier centers back to the original basis
-        wannier_centers = np.dot(wannier_centers, lattice_vectors)
-
     if not return_atom:
         return wannier_centers, lattice_vectors
 
@@ -187,10 +175,5 @@ def read_wannier_wout(
     # Convert to NDArrays
     atom_coords = np.array(atom_coords)
     atom_elements = np.array(atom_elements)
-
-    if transform_home_cell:
-        atom_coords = np.dot(atom_coords, transformation)
-        atom_coords = np.mod(atom_coords, 1)
-        atom_coords = np.dot(atom_coords, lattice_vectors)
 
     return wannier_centers, lattice_vectors, atom_coords, atom_elements

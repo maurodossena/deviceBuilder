@@ -98,8 +98,7 @@ def make_cell() -> Device:
 
     # The couplings along x and y are kept apart from the in-cell block, the
     # ones along z are not there at all.
-    dev.coup_available = [1, 1, 0]
-    dev.bs_available = True
+    dev._update_max_coupling()
 
     dev._refresh_orb_per_at()
 

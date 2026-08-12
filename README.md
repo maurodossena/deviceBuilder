@@ -43,7 +43,7 @@ dev.upscale(4, dir=0)
 dev.generate_potential_barrier(0.0, 0.4, 0.0, slope=2.0, dir=0)
 
 # Write device/inputs/{hamiltonian.h5,overlap.h5,structure.xyz,potential.npy}
-# and device/config.toml, with a left and a right contact
+# and device/quatrex_config.toml, with a left and a right contact
 dev.export_data_QUATREX(transport_dir=[0], output_dir="device", cont="lr")
 ```
 
@@ -72,8 +72,8 @@ A `Device` is a set of sparse blocks indexed by cell, plus the lattice they live
 | `start_orb_per_at` | first orbital index of each atom, derived from the two above |
 | `Fermi` | Fermi level, in eV |
 | `potential` | potential profile over the atoms, or `None` |
-| `coup_available` | per direction: is the inter-cell coupling still present? |
-| `bs_available` | whether a band structure can still be computed |
+| `max_coupling` | per direction: how many cells the furthest stored coupling reaches |
+| `PBC` | per direction: is the device still periodic? |
 
 `H[(i, j, k)]` is the block coupling the home cell to the cell at
 `i·a₁ + j·a₂ + k·a₃`; `H[(0, 0, 0)]` is the cell itself. **All energies are in
@@ -84,9 +84,11 @@ coupling reaches `n` cells along a direction, every index from `-n` to `n` is
 present, the ones with nothing in them holding an all-zero matrix.
 
 Operations that add, remove or reorder atoms keep `start_orb_per_at` in sync for
-you. Operations that discard couplings (`upscale_cont`, `glue_other_device`)
-clear the corresponding `coup_available` flag, so a later
-`compute_band_structure` fails loudly rather than returning a wrong answer.
+you. Operations that add or discard couplings (`upscale`, `upscale_cont`,
+`glue_other_device`, `wrap_cell`) refresh `max_coupling`, so a `dir` with nothing
+but the `0` block left reads as `0` and a later `compute_band_structure` along it
+fails loudly rather than returning a wrong answer. `upscale_cont` and
+`glue_other_device` also clear `PBC` along the direction they worked on.
 
 ## API
 
@@ -108,8 +110,8 @@ from the same file:
   out of them along each of the three directions in turn. A direction is only
   kept if the in-cell and coupling blocks come out cleanly separated; when they
   do not, a message says so and that direction is left folded into
-  `H[(0, 0, 0)]`, with `coup_available` still `0`. That usually means the cell
-  is too small along it.
+  `H[(0, 0, 0)]`, with `max_coupling` still `0` along it. That usually means the
+  cell is too small along it.
 * **`K_POINTS`** — one `.csr` per cell index is read as is, and all three
   directions are available.
 
@@ -144,7 +146,7 @@ malformed run fails at load time rather than somewhere downstream:
 | `align_with_axis()` | move the lattice corner to the origin |
 | `translate_cell(shift)` | rigid translation by a Cartesian vector |
 | `shift_energies(dE)` | rigid shift of H and of the Fermi level, in eV |
-| `reduce_to_gamma(dir=0)` | fold all transverse couplings into the blocks along `dir` |
+| `wrap_cell()` | wrap atoms that left the cell back into it, moving their blocks with them |
 
 ### Assembling a device
 
@@ -158,14 +160,13 @@ their types are checked, and the periodic coupling blocks of `contact` become
 the coupling between the two regions.
 
 ```python
-dev.upscale_cont(orig, vec, dir=0, n=3, compute_band=False)
+dev.upscale_cont(orig, vec, dir=0, n=3)
 ```
 
 repeats a contact cell — the one with origin `orig` and lattice vectors `vec`
 (3×3) — `n` times on the negative side of `dir`. The cell must sit at the
 negative edge of the device and must not couple beyond its immediate neighbour;
-both are checked. With `compute_band=True` the contact band structure is plotted
-at transverse Gamma, which is a good sanity check on `orig` and `vec`.
+both are checked.
 
 ### Potential, bands and views
 
@@ -180,12 +181,12 @@ at transverse Gamma, which is a good sanity check on `orig` and `vec`.
 
 | method | writes |
 | --- | --- |
-| `export_data_QUATREX(transport_dir=[0], output_dir="device", cont="lr")` | `inputs/hamiltonian.h5`, `inputs/overlap.h5`, `inputs/structure.xyz`, `inputs/potential.npy` and `config.toml` |
+| `export_data_QUATREX(transport_dir=[0], output_dir="device", cont="lr")` | `inputs/hamiltonian.h5`, `inputs/overlap.h5`, `inputs/structure.xyz`, `inputs/potential.npy` and `quatrex_config.toml` |
 | `export_data_OMEN(output_dir="device_OMEN")` | `H_*.bin`, `S_*.bin`, `lattice_dat`, `vact_dat` |
 
 Blocks that couple along a transport direction are left out of the QUATREX
 export — the transport code builds those itself from the contacts. `cont` selects
-which contacts to describe in `config.toml`: any combination of `"l"`, `"r"`,
+which contacts to describe in `quatrex_config.toml`: any combination of `"l"`, `"r"`,
 `"t"`, `"b"`.
 
 ## Optional dependencies

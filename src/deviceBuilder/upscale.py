@@ -1,9 +1,7 @@
 """Periodic repetition of a device, and of one of its contacts."""
 
 import numpy as np
-from matplotlib import pyplot as plt
 from scipy import sparse as sp
-from scipy.linalg import eigh
 
 from .base import DeviceBase
 from .lattice import get_orb_from_at
@@ -27,7 +25,7 @@ class UpscaleMixin(DeviceBase):
         if dir not in [0, 1, 2]:
             raise ValueError("dir must be 0, 1, or 2")
 
-        if self.coup_available[dir] == 0:
+        if self.max_coupling[dir] == 0:
             raise Exception("I don't have the coupling in this direction")
 
         # Upscale the Hamiltonian and Overlap matrices
@@ -53,6 +51,7 @@ class UpscaleMixin(DeviceBase):
         self.lattice["L"][dir, :] *= n
 
         self._refresh_orb_per_at()
+        self._update_max_coupling()
 
     def _upscale_mat(self, M: dict, n: int, dir: int):
         """
@@ -146,7 +145,6 @@ class UpscaleMixin(DeviceBase):
         vec: np.ndarray,
         dir: int,
         n: int,
-        compute_band: bool = False,
     ):
         """
         Upscale the contact unit cell along a specified direction by adding n periodic repetitions.
@@ -160,8 +158,6 @@ class UpscaleMixin(DeviceBase):
             Direction along which to upscale (0 for x, 1 for y, 2 for z).
         n : int
             Number of periodic repetitions to add.
-        compute_band : bool
-            Whether to compute and plot the band structure after upscaling (Bs is computed at transverse Gamma).
         """
 
         # Get the atoms and orbitals inside the origin cell
@@ -197,38 +193,12 @@ class UpscaleMixin(DeviceBase):
 
             self.lattice["L"][dir, :] += np.absolute(vec[dir, :])
 
-        # Compute and plot the band structure at transverse Gamma
-        if compute_band:
-
-            for k in np.linspace(-1, 1, 20):
-
-                H_k = (
-                    H_or_K
-                    + H_coup_K * np.exp(1j * np.pi * k)
-                    + H_coup_K.T * np.exp(-1j * np.pi * k)
-                )
-                S_k = (
-                    S_or_K
-                    + S_coup_K * np.exp(1j * np.pi * k)
-                    + S_coup_K.T * np.exp(-1j * np.pi * k)
-                )
-
-                H_k = H_k.todense()
-                S_k = S_k.todense()
-
-                eigvals, _ = eigh(
-                    H_k, b=S_k, subset_by_value=(self.Fermi - 2, self.Fermi + 2)
-                )
-                plt.scatter([k] * len(eigvals), eigvals, color="black", s=1)
-
-            plt.ylim(self.Fermi - 2, self.Fermi + 2)
-            plt.show()
-
         # Update orb_per_at
         self._refresh_orb_per_at()
 
-        self.bs_available = False
-        self.coup_available[dir] = 0
+        self._update_max_coupling()
+
+        self.PBC[dir] = False # The device is no longer periodic in the direction of the contact
 
     def _upscale_cont_mat(
         self,

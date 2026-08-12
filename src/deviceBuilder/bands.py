@@ -39,11 +39,6 @@ class BandStructureMixin(DeviceBase):
             Maximum valence band energy.
         """
 
-        if not self.bs_available:
-            raise Exception(
-                "I deleted some elements of the hamiltonian, I can't compute the band structure"
-            )
-
         k_points = self._build_k_points(k_path, n_point)
         eig_tot = []
 
@@ -132,7 +127,7 @@ class BandStructureMixin(DeviceBase):
 
             for dir, name in enumerate("xyz"):
                 if k_start[dir] != 0 or k_end[dir] != 0:
-                    if self.coup_available[dir] == 0:
+                    if self.max_coupling[dir] == 0:
                         raise Exception(
                             f"I don't have the coupling in {name} direction"
                         )
