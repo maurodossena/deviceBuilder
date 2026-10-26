@@ -26,7 +26,15 @@ import numpy as np
 import pytest
 from scipy import sparse as sp
 
-from deviceBuilder import Device
+from deviceBuilder import (
+    Device,
+    refresh_orb_per_at,
+    sort_atoms,
+    translate_cell,
+    update_max_coupling,
+    upscale,
+    wrap_cell,
+)
 
 # The cell reaches its third neighbours along x and its first ones along y, and
 # is isolated along z.
@@ -107,14 +115,14 @@ def make_device() -> Device:
 
     # The couplings along x and y are kept apart from the in-cell block, the
     # ones along z are not there at all.
-    dev._update_max_coupling()
+    update_max_coupling(dev)
 
 
-    dev._refresh_orb_per_at()
+    refresh_orb_per_at(dev)
 
-    dev.upscale(N_REPEAT, dir=0)
-    dev.upscale(N_REPEAT, dir=1)
-    dev.sort_atoms([0, 1, 2])
+    upscale(dev, N_REPEAT, dir=0)
+    upscale(dev, N_REPEAT, dir=1)
+    sort_atoms(dev, [0, 1, 2])
 
     dev.PBC = [True, True, False]  # The device is periodic along x and y, but not along z
 
@@ -202,9 +210,9 @@ def test_wrapping_a_translated_device_leaves_it_unchanged(shift: tuple):
     # The shift is a whole number of cells, so the shifted lattice sits on the
     # one it started from once the atoms that left the cell are wrapped back.
     wrapped = make_device()
-    wrapped.translate_cell(np.array(shift) @ wrapped.lattice["L"])
-    wrapped.wrap_cell()
-    wrapped.sort_atoms([0, 1, 2])
+    translate_cell(wrapped, np.array(shift) @ wrapped.lattice["L"])
+    wrap_cell(wrapped)
+    sort_atoms(wrapped, [0, 1, 2])
 
     assert_same_lattice(wrapped, reference)
     assert_same_blocks(wrapped.H, reference.H, "H")

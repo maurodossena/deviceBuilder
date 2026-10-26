@@ -24,45 +24,53 @@ Take a CP2K calculation of a small unit cell, stretch it into a four-cell
 channel with a potential barrier in the middle, and export it:
 
 ```python
-from deviceBuilder import Device
-
-dev = Device()
+from deviceBuilder import (
+    export_data_QUATREX,
+    generate_potential_barrier,
+    load_from_cp2k,
+    sort_atoms,
+    upscale,
+)
 
 # Read the lattice, the KS and the overlap matrices out of the CP2K run.
 # At Gamma the couplings between neighbouring cells are cut out of the Gamma
 # matrix; with K_POINTS they are read straight from the .csr files.
-dev.load_from_cp2k("cp2k.out", path="./scf")
+dev = load_from_cp2k("cp2k.out", path="./scf")
 
 # Order atoms and orbitals along x, then y, then z
-dev.sort_atoms([0, 1, 2])
+sort_atoms(dev, [0, 1, 2])
 
 # Repeat the cell four times along the transport direction
-dev.upscale(4, dir=0)
+upscale(dev, 4, dir=0)
 
 # A 0.4 eV barrier in the middle third of the device
-dev.generate_potential_barrier(0.0, 0.4, 0.0, slope=2.0, dir=0)
+generate_potential_barrier(dev, 0.0, 0.4, 0.0, slope=2.0, dir=0)
 
 # Write device/inputs/{hamiltonian.h5,overlap.h5,structure.xyz,potential.npy}
 # and device/quatrex_config.toml, with a left and a right contact
-dev.export_data_QUATREX(transport_dir=[0], output_dir="device", cont="lr")
+export_data_QUATREX(dev, transport_dir=[0], output_dir="device", cont="lr")
 ```
 
 Check the band structure of the cell before building the device:
 
 ```python
-dev = Device()
-dev.load_from_cp2k("cp2k.out", path="./scf")
+from deviceBuilder import compute_band_structure
+
+dev = load_from_cp2k("cp2k.out", path="./scf")
 
 # Gamma -> X, 40 points, plotted in a window of ±1 eV around the Fermi level
-eig, cond_min, val_max = dev.compute_band_structure(
-    [[0, 0, 0], [1, 0, 0]], n_point=40, dE=1.0
+eig, cond_min, val_max = compute_band_structure(
+    dev, [[0, 0, 0], [1, 0, 0]], n_point=40, dE=1.0
 )
 print("gap:", cond_min - val_max)
 ```
 
 ## How a device is represented
 
-A `Device` is a set of sparse blocks indexed by cell, plus the lattice they live on:
+A `Device` is a plain container: a set of sparse blocks indexed by cell, plus
+the lattice they live on. It has no methods: the loaders build and return one, and every other operation
+below is a function that takes the device as its first argument and edits it in
+place.
 
 | attribute | meaning |
 | --- | --- |
@@ -90,15 +98,23 @@ but the `0` block left reads as `0` and a later `compute_band_structure` along i
 fails loudly rather than returning a wrong answer. `upscale_cont` and
 `glue_other_device` also clear `PBC` along the direction they worked on.
 
+When you fill `H`, `S` and `lattice` by hand instead of using a loader, call
+`refresh_orb_per_at(dev)` and `update_max_coupling(dev)` once you are done.
+
 ## API
+
+Every function is importable from `deviceBuilder`. Apart from the loaders, each
+takes the `Device` it works on as its first argument, `dev`, and edits it in place.
 
 ### Loading
 
-| method | source |
+| function | source |
 | --- | --- |
 | `load_from_cp2k(filename, path, eps)` | a CP2K run, at Gamma or with `K_POINTS` |
 | `load_from_wannier90(filename, path, eps, gather_wannier_centers)` | `seedname.wout` + `seedname_hr.dat` |
 | `load_from_MALOQ_GAMMA(H_file, S_file, xyz_file, orb_map, eps)` | H and S as `.npy`/`.npz`, geometry from an xyz file |
+
+Each loader returns a new `Device`.
 
 `filename` is the CP2K output file and `path` the directory holding it. Lattice
 vectors, atomic coordinates and the number of orbitals per kind are parsed out
@@ -137,30 +153,31 @@ malformed run fails at load time rather than somewhere downstream:
 
 ### Reshaping the lattice
 
-| method | effect |
+| function | effect |
 | --- | --- |
-| `sort_atoms(dir=[0,1,2], decimals=6)` | lexsort atoms and orbitals, primary key `dir[0]` |
-| `upscale(n, dir=0)` | repeat the cell `n` times along `dir`, rebuilding all blocks |
-| `remove_atoms(b1, b2)` | drop every atom in the box `[b1, b2)`, with its orbitals |
-| `center_cell()` | center the atoms in the unit cell |
-| `align_with_axis()` | move the lattice corner to the origin |
-| `translate_cell(shift)` | rigid translation by a Cartesian vector |
-| `shift_energies(dE)` | rigid shift of H and of the Fermi level, in eV |
-| `wrap_cell()` | wrap atoms that left the cell back into it, moving their blocks with them |
+| `sort_atoms(dev, dir=[0,1,2], decimals=6)` | lexsort atoms and orbitals, primary key `dir[0]` |
+| `upscale(dev, n, dir=0)` | repeat the cell `n` times along `dir`, rebuilding all blocks |
+| `remove_atoms(dev, b1, b2)` | drop every atom in the box `[b1, b2)`, with its orbitals |
+| `center_cell(dev)` | center the atoms in the unit cell |
+| `align_with_axis(dev)` | move the lattice corner to the origin |
+| `translate_cell(dev, shift)` | rigid translation by a Cartesian vector |
+| `shift_energies(dev, dE)` | rigid shift of H and of the Fermi level, in eV |
+| `wrap_cell(dev)` | wrap atoms that left the cell back into it, moving their blocks with them |
+| `reduce_coupling_dir(dev, dir)` | fold every coupling along `dir` into the in-cell blocks |
 
 ### Assembling a device
 
 ```python
-channel.glue_other_device(contact, dir=0, interface=1, tol=0.1)
+glue_other_device(channel, contact, dir=0, interface=1, tol=0.1)
 ```
 
 attaches `contact` to the positive end of `channel` along x (`interface=-1` for
-the negative end). Atoms within `tol` of each other at the seam are matched up,
+the negative end); `contact` itself is left untouched. Atoms within `tol` of each other at the seam are matched up,
 their types are checked, and the periodic coupling blocks of `contact` become
 the coupling between the two regions.
 
 ```python
-dev.upscale_cont(orig, vec, dir=0, n=3)
+upscale_cont(dev, orig, vec, dir=0, n=3)
 ```
 
 repeats a contact cell — the one with origin `orig` and lattice vectors `vec`
@@ -170,19 +187,19 @@ both are checked.
 
 ### Potential, bands and views
 
-| method | |
+| function | |
 | --- | --- |
-| `generate_potential_barrier(V1, V2, V3, slope, dir, grid_from_OMEN=None)` | three regions joined by error functions, stored in `dev.potential` |
-| `compute_band_structure(k_path, n_point=10, dE=2.0)` | returns `(eigenvalues, conduction_min, valence_max)` and plots the bands |
-| `visualize_lattice()` | interactive viewer, to be returned from a notebook cell |
-| `print_isosurface_self_interaction(atom_type)` | 2D map of the mean on-site energy per atom of one type |
+| `generate_potential_barrier(dev, V1, V2, V3, slope, dir, grid_from_OMEN=None)` | three regions joined by error functions, stored in `dev.potential` |
+| `compute_band_structure(dev, k_path, n_point=10, dE=2.0)` | returns `(eigenvalues, conduction_min, valence_max)` and plots the bands |
+| `visualize_lattice(dev)` | interactive viewer, to be returned from a notebook cell |
+| `print_isosurface_self_interaction(dev, atom_type)` | 2D map of the mean on-site energy per atom of one type |
 
 ### Exporting
 
-| method | writes |
+| function | writes |
 | --- | --- |
-| `export_data_QUATREX(transport_dir=[0], output_dir="device", cont="lr")` | `inputs/hamiltonian.h5`, `inputs/overlap.h5`, `inputs/structure.xyz`, `inputs/potential.npy` and `quatrex_config.toml` |
-| `export_data_OMEN(output_dir="device_OMEN")` | `H_*.bin`, `S_*.bin`, `lattice_dat`, `vact_dat` |
+| `export_data_QUATREX(dev, transport_dir=[0], output_dir="device", cont="lr")` | `inputs/hamiltonian.h5`, `inputs/overlap.h5`, `inputs/structure.xyz`, `inputs/potential.npy` and `quatrex_config.toml` |
+| `export_data_OMEN(dev, output_dir="device_OMEN")` | `H_*.bin`, `S_*.bin`, `lattice_dat`, `vact_dat` |
 
 Blocks that couple along a transport direction are left out of the QUATREX
 export — the transport code builds those itself from the contacts. `cont` selects

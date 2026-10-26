@@ -22,7 +22,14 @@ import numpy as np
 import pytest
 from scipy import sparse as sp
 
-from deviceBuilder import Device
+from deviceBuilder import (
+    Device,
+    glue_other_device,
+    refresh_orb_per_at,
+    sort_atoms,
+    update_max_coupling,
+    upscale,
+)
 
 # The cell is coupled to its first neighbours along x and y, and isolated along z.
 CELL_KEYS = [(i, j, 0) for i in (-1, 0, 1) for j in (-1, 0, 1)]
@@ -98,9 +105,9 @@ def make_cell() -> Device:
 
     # The couplings along x and y are kept apart from the in-cell block, the
     # ones along z are not there at all.
-    dev._update_max_coupling()
+    update_max_coupling(dev)
 
-    dev._refresh_orb_per_at()
+    refresh_orb_per_at(dev)
 
     return dev
 
@@ -195,19 +202,19 @@ def test_two_glued_halves_match_the_upscaled_device(dir: int, interface: int):
 
     # Half the device, with a copy of itself glued to one of its interfaces.
     glued = make_cell()
-    glued.upscale(n, dir=dir)
+    upscale(glued, n, dir=dir)
     other = make_cell()
-    other.upscale(n, dir=dir)
-    glued.glue_other_device(other, dir, interface)
+    upscale(other, n, dir=dir)
+    glue_other_device(glued, other, dir, interface)
 
     # The same device, obtained by repeating the cell in one go.
     upscaled = make_cell()
-    upscaled.upscale(2 * n, dir=dir)
+    upscale(upscaled, 2 * n, dir=dir)
 
     # `upscale` and `glue_other_device` do not lay the atoms out in the same
     # order, so both devices are sorted before being compared.
-    glued.sort_atoms([0, 1, 2])
-    upscaled.sort_atoms([0, 1, 2])
+    sort_atoms(glued, [0, 1, 2])
+    sort_atoms(upscaled, [0, 1, 2])
 
     assert_same_lattice(glued, upscaled)
     assert_same_blocks(glued.H, upscaled.H, dir, "H")

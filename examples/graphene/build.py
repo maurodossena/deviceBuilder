@@ -1,28 +1,34 @@
-from deviceBuilder import Device
+from deviceBuilder import (
+    export_data_QUATREX,
+    glue_other_device,
+    load_from_cp2k,
+    shift_energies,
+    sort_atoms,
+    translate_cell,
+    upscale,
+)
 import numpy as np
 
-dev1 = Device()
-dev1.load_from_cp2k("graph.out","SCF")
-dev1.translate_cell(np.array([0.5,0.5,0.5])@dev1.lattice["L"])
+dev1 = load_from_cp2k("graph.out","SCF")
+translate_cell(dev1, np.array([0.5,0.5,0.5])@dev1.lattice["L"])
 
-dev1.upscale(6,0)
+upscale(dev1, 6,0)
 
-dev1.sort_atoms([1,0,2],decimals=2)
+sort_atoms(dev1, [1,0,2],decimals=2)
 
-dev2 = Device()
-dev2.load_from_cp2k("graph.out","SCF")
+dev2 = load_from_cp2k("graph.out","SCF")
 
-dev2.translate_cell(np.array([0.5,0.5,0.5])@dev2.lattice["L"])
+translate_cell(dev2, np.array([0.5,0.5,0.5])@dev2.lattice["L"])
 
-dev2.upscale(6,0)
+upscale(dev2, 6,0)
 
-dev1.glue_other_device(dev2, 0, -1)
-dev1.glue_other_device(dev2, 0, 1)
+glue_other_device(dev1, dev2, 0, -1)
+glue_other_device(dev1, dev2, 0, 1)
 
-dev1.translate_cell(np.array([1,1,1]))
+translate_cell(dev1, np.array([1,1,1]))
 
-dev1.shift_energies(0.5)
+shift_energies(dev1, 0.5)
 
-dev1.sort_atoms(decimals=2)
+sort_atoms(dev1, decimals=2)
 
-dev1.export_data_QUATREX()
+export_data_QUATREX(dev1)
